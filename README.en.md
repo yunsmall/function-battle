@@ -79,11 +79,21 @@ fg_server (single process; both ports share one room table)
 
 ## Building
 
-vcpkg dependencies: Eigen3, nlohmann-json, asio, cxxopts, gtest.
-raylib, websocketpp and exprtk are pinned to the versions under `third_party/`: raylib to
-the official prebuilt package (vcpkg's 6.0 shows a rendering regression on this machine),
-websocketpp to the 0.8.2 sources (standalone asio, consistent with the project), exprtk to
-a single header (MIT). Example (clang + Ninja + vcpkg):
+Dependencies are managed with [vcpkg](https://github.com/microsoft/vcpkg) (`<vcpkg>`
+below is your vcpkg directory):
+
+```bash
+git clone https://github.com/microsoft/vcpkg <vcpkg>   # skip if vcpkg is already installed
+<vcpkg>/bootstrap-vcpkg      # Windows: bootstrap-vcpkg.bat; Linux/macOS: bootstrap-vcpkg.sh
+<vcpkg>/vcpkg install eigen3 nlohmann-json asio cxxopts exprtk gtest
+```
+
+websocketpp (0.8.2) sources ship in `third_party/` (standalone asio, consistent with the
+project); the raylib 5.5 official prebuilt package is not stored in the repo — CMake
+downloads it from the official release and verifies its SHA-256 at configure time
+(vcpkg's 6.0 has a rendering regression, hence not using it).
+
+Then configure (clang + Ninja shown; other compilers/generators work the same):
 
 ```bash
 cmake -B build -GNinja \
@@ -91,6 +101,9 @@ cmake -B build -GNinja \
   -DCMAKE_CXX_COMPILER=clang++
 cmake --build build            # or: ninja -C build
 ```
+
+On Linux the graphical client is not available (the raylib prebuilt package is
+Windows-only): add `-DFG_BUILD_CLIENT=OFF` to build only the core, server and tests.
 
 Outputs: `build/src/server/fg_server.exe`, `build/src/client/fg_client.exe`,
 `build/src/tests/fg_tests.exe`.

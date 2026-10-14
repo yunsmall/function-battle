@@ -63,10 +63,19 @@ fg_server（单进程，双端口共享同一个房间表）
 
 ## 构建
 
-vcpkg 依赖：Eigen3、nlohmann-json、asio、cxxopts、gtest。
-raylib、websocketpp 与 exprtk 固定用仓库内 `third_party/` 的版本：raylib 是官方
-预编译包（vcpkg 的 6.0 在本机有呈现回归），websocketpp 是 0.8.2 源码（与项目统一用
-standalone asio），exprtk 是单头文件（MIT）。以本机为例（clang + Ninja + vcpkg 工具链）：
+依赖用 [vcpkg](https://github.com/microsoft/vcpkg) 管理（`<vcpkg>` 指你的 vcpkg
+目录）：
+
+```bash
+git clone https://github.com/microsoft/vcpkg <vcpkg>   # 已装过 vcpkg 可跳过
+<vcpkg>/bootstrap-vcpkg       # Windows 为 bootstrap-vcpkg.bat，Linux/macOS 为 .sh
+<vcpkg>/vcpkg install eigen3 nlohmann-json asio cxxopts exprtk gtest
+```
+
+websocketpp（0.8.2）源码随仓库 `third_party/` 提供（与项目统一用 standalone asio）；
+raylib 5.5 官方预编译包不往仓库塞——配置时 CMake 自动从官方 release 下载并校验
+SHA-256（vcpkg 上的 6.0 有呈现回归，故不用）。然后配置构建（clang + Ninja 示例，
+换其他编译器/生成器同理）：
 
 ```bash
 cmake -B build -GNinja \
@@ -74,6 +83,9 @@ cmake -B build -GNinja \
   -DCMAKE_CXX_COMPILER=clang++
 cmake --build build            # 或 ninja -C build
 ```
+
+Linux 上不需要图形客户端（raylib 预编译包仅 Windows），加 `-DFG_BUILD_CLIENT=OFF`
+只构建核心、服务器与测试。
 
 产物：`build/src/server/fg_server.exe`、`build/src/client/fg_client.exe`、
 `build/src/tests/fg_tests.exe`。

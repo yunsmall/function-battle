@@ -1,7 +1,3 @@
-# 客户端固定使用仓库内 third_party 的官方预编译 raylib 5.5（动态库 + 导入库）：
-# 本机 vcpkg 的 raylib 6.0 存在呈现回归——官方最小示例的客户区同样纯黑，同码换 5.5 即正常
-set(FG_RAYLIB_DIR ${CMAKE_SOURCE_DIR}/third_party/raylib-5.5/raylib-5.5_win64_msvc16)
-
 find_package(cxxopts CONFIG REQUIRED)
 
 add_executable(fg_client
@@ -15,10 +11,31 @@ add_executable(fg_client
     render.cpp
     net_client.cpp
 )
-target_link_libraries(fg_client PRIVATE fg_core cxxopts::cxxopts ${FG_RAYLIB_DIR}/lib/raylibdll.lib)
-target_include_directories(fg_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${FG_RAYLIB_DIR}/include)
+target_link_libraries(fg_client PRIVATE fg_core cxxopts::cxxopts)
+target_include_directories(fg_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# 动态库与 exe 同目录部署（用 copy_if_different：vcpkg 的 applocal 若拷来同名 6.0 dll，这里会再盖回 5.5）
-add_custom_command(TARGET fg_client POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${FG_RAYLIB_DIR}/lib/raylib.dll" "$<TARGET_FILE_DIR:fg_client>")
+if(WIN32)
+    # Windows 固定用 raylib 5.5 官方预编译包（动态库 + 导入库）：配置时从官方
+    # release 自动下载并校验 SHA-256，不往仓库里放二进制。不用 vcpkg 的 6.0——
+    # 它存在呈现回归：官方最小示例的客户区同样纯黑，同码换 5.5 即正常
+    include(FetchContent)
+    FetchContent_Declare(raylib_prebuilt
+        URL https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_msvc16.zip
+        URL_HASH SHA256=8d046084d12353183e701ef4c9d276c21fcd3243c2a368091fabfb2769b8507c
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(raylib_prebuilt)
+    # 解压时会剥掉压缩包的顶层目录，SOURCE_DIR 直接就是包内容
+    set(FG_RAYLIB_DIR ${raylib_prebuilt_SOURCE_DIR})
+    target_link_libraries(fg_client PRIVATE ${FG_RAYLIB_DIR}/lib/raylibdll.lib)
+    target_include_directories(fg_client PRIVATE ${FG_RAYLIB_DIR}/include)
+
+    # 动态库与 exe 同目录部署（用 copy_if_different：vcpkg 的 applocal 若拷来同名 6.0 dll，这里会再盖回 5.5）
+    add_custom_command(TARGET fg_client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${FG_RAYLIB_DIR}/lib/raylib.dll" "$<TARGET_FILE_DIR:fg_client>")
+else()
+    # 非 Windows：找系统/vcpkg 安装的 raylib
+    find_package(raylib 5.5 CONFIG REQUIRED)
+    target_link_libraries(fg_client PRIVATE raylib)
+endif()
