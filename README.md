@@ -1,6 +1,6 @@
 # 函数对战（Function Battle）
 
-[![ci](https://github.com/yunsmall/function_game/actions/workflows/ci.yml/badge.svg)](https://github.com/yunsmall/function_game/actions/workflows/ci.yml)
+[![ci](https://github.com/yunsmall/function-battle/actions/workflows/ci.yml/badge.svg)](https://github.com/yunsmall/function-battle/actions/workflows/ci.yml)
 **English**: [README.en.md](README.en.md)
 
 直角坐标系上的回合制数学射击游戏：两队玩家轮流在限时内输入一个函数（或曲线方程），
