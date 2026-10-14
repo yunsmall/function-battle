@@ -1,7 +1,12 @@
 # 函数对战（Function Battle）
 
+**English**: [README.en.md](README.en.md)
+
 直角坐标系上的回合制数学射击游戏：两队玩家轮流在限时内输入一个函数（或曲线方程），
 炮弹就沿该曲线从你的位置飞出——穿透、友伤、撞上遮挡物会炸出坑。一队全灭则另一队获胜。
+玩法概念源自 [Graphwar](https://github.com/catabriga/graphwar)（在坐标系上输入函数、
+炮弹沿曲线飞的回合制射击）；本项目完全独立重写，并加入了权威服务器、多人联机与
+网页版。
 
 - **C++ 权威服务器**：asio TCP（原生客户端）+ WebSocket（网页客户端）双协议同进程，
   多房间、60Hz 权威模拟，人机在服务器线程池里思考
@@ -90,7 +95,21 @@ Linux 上不需要图形客户端（raylib 预编译包仅 Windows），加 `-DF
 产物：`build/src/server/fg_server.exe`、`build/src/client/fg_client.exe`、
 `build/src/tests/fg_tests.exe`。
 
+### 打包发布（zip）
+
+```bash
+cmake --install build --prefix dist   # 装到一个扁平目录（解压即用的布局）
+cd build && cpack -G ZIP              # 或直接打出 function_game-<版本>-<系统>.zip
+```
+
+发布包为扁平布局：exe、raylib.dll、MSVC 运行库、`web/` 静态页在同一层——服务器按
+exe 所在目录定位网页文件，解压后从任何位置启动都能直接运行。
+
 ## 运行
+
+**从发布 zip 玩乐**：解压后在解压出的目录里运行——Windows 双击 `fg_client.exe`
+（单机人机）或 `fg_server.exe`（开服，浏览器打开 `http://<本机>:8000/`）；包内已
+附带全部运行库，没有其他安装步骤。
 
 ### 服务器
 

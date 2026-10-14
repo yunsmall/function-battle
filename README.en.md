@@ -1,9 +1,15 @@
 # Function Battle
 
+**中文**: [README.md](README.md)
+
 A turn-based mathematical shooter on the Cartesian plane: two teams alternate turns entering
 a function (or curve equation) under a time limit, and the projectile flies along that curve
 from your position — penetrating, friendly-fire enabled, blasting craters into obstacles it
 hits. The last team standing wins.
+The gameplay concept is inspired by [Graphwar](https://github.com/catabriga/graphwar) (a
+turn-based shooter on the Cartesian plane: you enter a function, the projectile flies along
+its curve); this project is an independent reimplementation adding an authoritative server,
+online multiplayer and a web client.
 
 - **Authoritative C++ server**: asio TCP (native clients) + WebSocket (browser clients) in a
   single process; multi-room, 60 Hz authoritative simulation, AI thinking on a thread pool
@@ -105,10 +111,25 @@ cmake --build build            # or: ninja -C build
 On Linux the graphical client is not available (the raylib prebuilt package is
 Windows-only): add `-DFG_BUILD_CLIENT=OFF` to build only the core, server and tests.
 
+### Packaging (zip)
+
+```bash
+cmake --install build --prefix dist   # installs a flat, ready-to-ship directory
+cd build && cpack -G ZIP              # or produce function_game-<version>-<system>.zip
+```
+
+The package is flat: the executables, raylib.dll, the MSVC runtime and the `web/`
+assets sit in one directory — the server locates its web files relative to the
+executable, so the unzipped package runs from anywhere.
+
 Outputs: `build/src/server/fg_server.exe`, `build/src/client/fg_client.exe`,
 `build/src/tests/fg_tests.exe`.
 
 ## Running
+
+**From a release zip**: unzip and run inside the extracted directory — on Windows
+double-click `fg_client.exe` (local play) or `fg_server.exe` (host; open
+`http://<host>:8000/` in a browser). Every runtime is bundled; no installation steps.
 
 ### Server
 

@@ -3,10 +3,12 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 
 #include <asio.hpp>
 #include <cxxopts.hpp>
 
+#include "exe_path.h"
 #include "room.h"
 #include "server.h"
 #include "world.h"
@@ -176,6 +178,19 @@ int main(int argc, char** argv) {
     }
 
     if (selftest > 0) return run_selftest(selftest, cfg);
+
+    // 静态目录解析：先按参数给的路径（相对当前工作目录）找，找不到再按 exe 所在
+    // 目录找——发布的 zip 解压后，从任何位置启动服务器都能定位到 web/static
+    {
+        std::error_code fs_ec;
+        if (!std::filesystem::exists(static_dir, fs_ec)) {
+            const std::string exe = fg::exe_dir();
+            if (!exe.empty()) {
+                const std::filesystem::path alt = std::filesystem::path(exe) / static_dir;
+                if (std::filesystem::exists(alt, fs_ec)) static_dir = alt.string();
+            }
+        }
+    }
 
     asio::io_context io;
     std::error_code ec;

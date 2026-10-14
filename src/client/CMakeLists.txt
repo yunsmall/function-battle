@@ -14,6 +14,9 @@ add_executable(fg_client
 target_link_libraries(fg_client PRIVATE fg_core cxxopts::cxxopts)
 target_include_directories(fg_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# 发布布局：exe 与 web/ 同层（配合顶层 CMakeLists 的打包规则）
+install(TARGETS fg_client RUNTIME DESTINATION .)
+
 if(WIN32)
     # Windows 固定用 raylib 5.5 官方预编译包（动态库 + 导入库）：配置时从官方
     # release 自动下载并校验 SHA-256，不往仓库里放二进制。不用 vcpkg 的 6.0——
@@ -34,6 +37,7 @@ if(WIN32)
     add_custom_command(TARGET fg_client POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${FG_RAYLIB_DIR}/lib/raylib.dll" "$<TARGET_FILE_DIR:fg_client>")
+    install(FILES ${FG_RAYLIB_DIR}/lib/raylib.dll DESTINATION .)
 else()
     # 非 Windows：找系统/vcpkg 安装的 raylib
     find_package(raylib 5.5 CONFIG REQUIRED)
