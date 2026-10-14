@@ -46,6 +46,11 @@
             room_has_password: '有密码',
             password_prompt: '房间有密码，请输入：',
             room_waiting: '等待中',
+            // 主题切换（顶栏按钮循环三套预设；与 C++ 客户端的主题同名同性格）
+            theme_btn_title: '切换配色主题',
+            theme_dark: '主题：深空',
+            theme_bright: '主题：明亮',
+            theme_terminal: '主题：终端绿',
 
             // 房间
             room_title: '房间 #{id}',

@@ -11,6 +11,7 @@
 
 #include <raylib.h>
 
+#include "fx.h"
 #include "net_client.h"
 #include "protocol.h"
 #include "room.h"
@@ -118,6 +119,12 @@ private:
     // 状态
     Screen screen_ = Screen::Menu;
     bool quit_ = false;  // "退出游戏"请求：置位后主循环自然退出，让析构完成清理
+    // 纯表现的动画状态（不参与任何对局逻辑）
+    FxSystem fx_;               // 命中/爆炸/碎裂特效
+    float shake_ = 0.0f;        // 屏幕震动强度（像素），随时间衰减到 0
+    float screen_fade_ = 1.0f;  // 界面切换过渡进度（1 = 完成；开场不淡入以免影响截图）
+    Screen prev_screen_ = Screen::Menu;
+    bool screenshot_mode_ = false;  // 截图工具：切屏不做黑场过渡（过渡会压暗截图）
     std::map<int, Font> fonts_;       // 档位字号 → 字形图集（kFontTiers；见 ui_style.h）
     std::vector<int> glyph_cps_;      // 当前字体已包含的码点（升序去重）
     bool glyph_dirty_ = false;        // 收集到新字形、待帧末统一重建图集

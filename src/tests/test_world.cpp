@@ -4,7 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <iomanip>
 #include <numbers>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -32,6 +34,14 @@ fg::CurveRequest aim_at(const fg::Vec2& from, const fg::Vec2& to, double oversho
     req.p_start = 0.0;
     req.p_end = len * overshoot;
     return req;
+}
+
+// 顶点式抛物线 f(x) = b1*x - b2*x*x 的表达式文本：出界宽限的测试要用"顶点高度
+// 超上界固定值"的形状，双精度系数必须以足够有效位写进表达式，形状才不走样
+std::string parabola_expr(double b1, double b2) {
+    std::ostringstream os;
+    os << std::setprecision(12) << b1 << "*x - " << b2 << "*x*x";
+    return os.str();
 }
 
 // 推进直到飞行阶段结束（或到达安全上限，防止死循环）
@@ -535,5 +545,126 @@ TEST(World, TurnDelayHoldsNextTurn) {
     EXPECT_EQ(w.phase(), fg::Phase::Flight);
     w.update(0.3);  // 累计 0.6 秒 > 设置的 0.5 秒
     EXPECT_EQ(w.phase(), fg::Phase::Input);
+    EXPECT_EQ(w.current_player_id(), 1);
+}
+
+// ---- 出界宽限：炮弹飞出地图后有 3 秒（速度×3 的弧长）"绕回来"的机会 ----
+
+// 共用形状：顶点全局高度固定为 18（超上界 15 三单位、在采样余量 8 内），
+// 顶点参数位置 k=6——出界区弧长约 9~13 单位（随士兵所在高度略变）。y=f(x) 的
+// 曲线起点由平移自动落在士兵身上，与士兵位置无关
+fg::CurveRequest out_of_map_arc(const fg::Vec2& soldier, double k) {
+    const double cp = 18.0 - soldier.y();  // 顶点的士兵局部高
+    fg::CurveRequest req;
+    req.mode = fg::CurveMode::YofX;
+    req.expr_a = parabola_expr(2.0 * cp / k, cp / (k * k));
+    req.dir = fg::FireDir::Positive;
+    return req;
+}
+
+TEST(World, ProjectileSurvivesOutOfMapGrace) {
+    // 高抛弹道飞出上边界一小段后回落到图内：炮弹必须带着"存活"状态出界再回来，
+    // 旧行为"出界即销毁"会永远看不到这类弹道
+    fg::GameConfig cfg;
+    cfg.match.turn_delay = 0.0;
+    cfg.match.seed = 7;
+    cfg.match.obstacle_count = 0;
+    cfg.match.first_team = 0;
+    fg::World w;
+    w.start(cfg, make_specs(1));
+    w.take_events();
+    ASSERT_EQ(w.current_player_id(), 0);
+    ASSERT_TRUE(w.submit(0, out_of_map_arc(w.players()[0].soldiers[0].pos, 6.0)).ok());
+
+    // 找出"弹头在地图外且炮弹仍存活"的瞬间：宽限生效时该状态持续约 0.8 秒
+    //（数十个 tick），逐 tick 观察必然捕获；旧行为在出界的同一子步就销毁
+    bool saw_alive_out = false;
+    for (int i = 0; i < 240 && w.phase() == fg::Phase::Flight; ++i) {
+        w.update(1.0 / 60.0);
+        if (!w.projectile()) break;  // 回到图内之前消失 = 被误杀
+        const fg::Projectile& pr = *w.projectile();
+        if (pr.path.at(pr.travel).y() > cfg.world.map_y_max) {
+            saw_alive_out = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(saw_alive_out) << "炮弹应带着存活状态飞出地图（宽限生效）";
+    run_flight(w);
+    EXPECT_EQ(w.current_player_id(), 1) << "炮弹回到图内、飞完余程后正常轮到 B";
+}
+
+TEST(World, ProjectileDiesAfterOutOfMapGrace) {
+    // 宽限的上限：调慢炮弹速度（宽限弧长 = 速度×3 秒），让同一条拱线的出界区
+    // 远超宽限——炮弹必须在超时后销毁，且销毁点在地图外（区别于"走到路径尽头"
+    // 的销毁点：那在图下方 8 单位的采样截断处）
+    fg::GameConfig cfg;
+    cfg.match.turn_delay = 0.0;
+    cfg.match.seed = 7;
+    cfg.match.obstacle_count = 0;
+    cfg.match.first_team = 0;
+    cfg.world.projectile_speed = 1.0;  // 宽限弧长 3，小于出界区弧长（≥9）
+    fg::World w;
+    w.start(cfg, make_specs(1));
+    w.take_events();
+    ASSERT_EQ(w.current_player_id(), 0);
+    ASSERT_TRUE(w.submit(0, out_of_map_arc(w.players()[0].soldiers[0].pos, 6.0)).ok());
+
+    fg::Vec2 last_pos;
+    bool had_projectile = false;
+    int ticks = 0;
+    while (w.phase() == fg::Phase::Flight && ticks++ < 1800) {
+        if (w.projectile()) {
+            const fg::Projectile& pr = *w.projectile();
+            last_pos = pr.path.at(pr.travel);
+            had_projectile = true;
+        }
+        w.update(1.0 / 60.0);
+    }
+    ASSERT_EQ(w.phase(), fg::Phase::Input) << "出界超时的炮弹应被销毁并轮转";
+    ASSERT_TRUE(had_projectile);
+    EXPECT_GT(last_pos.y(), cfg.world.map_y_max)
+        << "销毁应发生在图外的宽限超时处，而不是路径尽头的下方截断处";
+    EXPECT_EQ(w.current_player_id(), 1);
+}
+
+TEST(World, ZeroSpeedProjectileDoesNotLockFlight) {
+    // 非正速度（错误配置）下炮弹永远推不动：必须直接按失效收尾并轮转，
+    // 不能把对局锁死在飞行阶段——step_flight 的速度兜底就是为此
+    fg::GameConfig cfg;
+    cfg.match.turn_delay = 0.0;
+    cfg.match.seed = 7;
+    cfg.match.obstacle_count = 0;
+    cfg.match.first_team = 0;
+    cfg.world.projectile_speed = 0.0;
+    fg::World w;
+    w.start(cfg, make_specs(1));
+    w.take_events();
+    ASSERT_EQ(w.current_player_id(), 0);
+    ASSERT_TRUE(w.submit(0, aim_at(w.players()[0].soldiers[0].pos,
+                                   w.players()[1].soldiers[0].pos)).ok());
+    w.update(1.0 / 60.0);
+    EXPECT_EQ(w.phase(), fg::Phase::Input) << "速度 0 的炮弹应立即销毁收尾，不锁死飞行阶段";
+    EXPECT_EQ(w.current_player_id(), 1);
+}
+
+TEST(World, TinySpeedProjectileDoesNotLockFlight) {
+    // 极小正速度（毒配置，如 1e-10）：炮弹永远飞不完，飞行时长硬上限（60 秒）
+    // 必须兜底收尾——不能把对局无限期锁在飞行阶段
+    fg::GameConfig cfg;
+    cfg.match.turn_delay = 0.0;
+    cfg.match.seed = 7;
+    cfg.match.obstacle_count = 0;
+    cfg.match.first_team = 0;
+    cfg.world.projectile_speed = 1e-10;
+    fg::World w;
+    w.start(cfg, make_specs(1));
+    w.take_events();
+    ASSERT_EQ(w.current_player_id(), 0);
+    ASSERT_TRUE(w.submit(0, aim_at(w.players()[0].soldiers[0].pos,
+                                   w.players()[1].soldiers[0].pos)).ok());
+    // 61 秒模拟内必须结束（上限 60 秒留 1 秒余量）
+    int ticks = 0;
+    while (w.phase() == fg::Phase::Flight && ticks++ < 61 * 60 + 15) w.update(1.0 / 60.0);
+    EXPECT_EQ(w.phase(), fg::Phase::Input) << "极小速度的炮弹应由飞行时长上限兜底收尾";
     EXPECT_EQ(w.current_player_id(), 1);
 }

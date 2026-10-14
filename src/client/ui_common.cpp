@@ -189,15 +189,21 @@ bool App::ui_button(Rectangle r, const std::string& label, bool selected, bool e
     const bool pressed = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
     Color bg = kPanelSoft;
     if (selected) bg = kAccent;
-    else if (pressed) bg = Color{56, 96, 156, 255};
-    else if (hover) bg = Color{52, 62, 86, 255};
+    else if (pressed) bg = ColorLerp(kAccent, BLACK, 0.35f);
+    else if (hover) {
+        // 悬停呼吸：背景从面板色向文字色微调（深色主题提亮、浅色主题微沉），随正弦
+        // 起伏——基准跟随主题，才能与 kTextHover 始终保持足够对比
+        const float p = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 6.0f);
+        bg = ColorLerp(kPanelSoft, kTextMain, 0.06f + 0.08f * p);
+    }
 
-    DrawRectangleRounded(r, 0.35f, 8, enabled ? bg : Color{34, 38, 50, 255});
-    DrawRectangleRoundedLines(r, 0.35f, 8, selected ? Color{140, 200, 255, 255} : kPanelBorder);
+    DrawRectangleRounded(r, 0.35f, 8, enabled ? bg : kPanelSoft);
+    DrawRectangleRoundedLines(r, 0.35f, 8,
+                              selected ? ColorLerp(kAccent, WHITE, 0.35f) : kPanelBorder);
     const float fs = 18.0f;
     const float tw = text_width(label, fs);
     const Color fg = !enabled ? kTextFaint
-                              : (selected ? Color{12, 20, 34, 255} : (hover ? WHITE : kTextMain));
+                              : (selected ? kOnAccent : (hover ? kTextHover : kTextMain));
     text(label, r.x + (r.width - tw) * 0.5f, r.y + (r.height - fs) * 0.5f - 1.0f, fs, fg);
     // 帮助面板（模态）打开时按钮只画不响应，也不消费点击（让点击走"点空白"逻辑）
     const bool clicked =
@@ -217,8 +223,9 @@ void App::ui_textbox(TextBox& box, Rectangle r, const std::string& hint, bool en
         clear_text_focus();
         box.focused = true;
     }
-    const Color border = box.focused ? kAccent : (hover ? Color{86, 96, 122, 255} : kPanelBorder);
-    DrawRectangleRounded(r, 0.28f, 8, Color{16, 20, 31, 255});
+    const Color border =
+        box.focused ? kAccent : (hover ? ColorLerp(kPanelBorder, kTextMain, 0.3f) : kPanelBorder);
+    DrawRectangleRounded(r, 0.28f, 8, kInputBg);
     DrawRectangleRoundedLines(r, 0.28f, 8, border);
 
     const std::string shown = box.text.empty() ? hint : box.text;

@@ -16,6 +16,13 @@ constexpr double kSubStep = 0.25;
 // 只看距离，飞出一点再折回的第二段会自杀
 constexpr double kArmLength = 1.2;
 constexpr double kArmClearance = 0.2;
+// 出界宽限（秒）：炮弹飞出地图边界后不立即销毁，给"绕回来"留时间窗——曲线弹道
+// 可以飞出地图再绕回（高抛越过上边界、大弧线从侧面兜回），一出界就杀会误伤这类
+// 合法弹道。匀速运动下时间宽限等价于弧长宽限（速度×秒）
+constexpr double kOutGraceSec = 3.0;
+// 炮弹全程飞行时间的硬上限（秒）：极小速度这类毒配置会把对局无限期锁死在飞行阶段，
+// 超时一律判死兜底；正常炮弹远用不到（最长行程 300 弧长 ÷ 默认速度 12 ≈ 25 秒）
+constexpr double kMaxFlightSec = 60.0;
 
 // 点到轴对齐方块（中心 c、半边长 h）的最近距离
 double dist_point_to_square(const Vec2& p, const Vec2& c, double h) {
@@ -344,9 +351,15 @@ void World::advance_turn() {
 void World::step_flight(double dt) {
     if (!projectile_) return;  // 防御：炮弹消失后的回合推进由 update 的停顿分支驱动
     Projectile& p = *projectile_;
+    // 速度非正（错误配置）：循环永远推不动炮弹，直接判死走统一收尾，避免锁死在飞行阶段
+    if (!(p.speed > 0.0)) p.dead = true;
+    // 飞行时长硬上限：极小正速度（毒配置）同样永远飞不完，超时判死兜底
+    p.flight_time += dt;
+    if (p.flight_time > kMaxFlightSec) p.dead = true;
     double remaining = p.speed * dt;
 
-    while (remaining > 1e-12 && !p.dead) {
+    // 剩余量判据用 > 0：推进量再小也让它照常累积（被阈值吞掉同样会永远飞不到头）
+    while (remaining > 0.0 && !p.dead) {
         const double step = std::min(remaining, kSubStep);
         remaining -= step;
         p.travel += step;
@@ -365,9 +378,16 @@ void World::step_flight(double dt) {
             }
         }
 
+        // 出界宽限：首次出界只记位置，超时才销毁；回到界内宽限重新计
         if (!in_map(pos)) {
-            p.dead = true;  // 飞出地图
-            break;
+            if (p.out_mark < 0.0) {
+                p.out_mark = p.travel;
+            } else if (p.travel - p.out_mark > p.speed * kOutGraceSec) {
+                p.dead = true;
+                break;
+            }
+        } else {
+            p.out_mark = -1.0;
         }
 
         // 命中士兵：扣血后穿透继续（同一炮弹对同一士兵只结算一次）

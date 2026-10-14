@@ -3,6 +3,8 @@
 [![ci](https://github.com/yunsmall/function-battle/actions/workflows/ci.yml/badge.svg)](https://github.com/yunsmall/function-battle/actions/workflows/ci.yml)
 **中文**: [README.md](README.md)
 
+![C++ client](docs/screenshot.png)
+
 A turn-based mathematical shooter on the Cartesian plane: two teams alternate turns entering
 a function (or curve equation) under a time limit, and the projectile flies along that curve
 from your position — penetrating, friendly-fire enabled, blasting craters into obstacles it
@@ -42,15 +44,18 @@ Seven curve modes:
 
 For parametric curves, t itself is unlimited; the only length constraint is
 "distance traveled ≤ 2 × the map diagonal" (writing `(t, t)` draws until it leaves the map
-or hits that length). Whatever leaves the map is cut off.
+or hits that length). A curve may briefly leave the map (that's what makes "fly out and
+loop back" trajectories possible): sampling stops 8 units beyond the border.
 
 **Turns**: input phase (120 s by default) → submit → flight phase (the next turn starts once
 the projectile is gone). The projectile travels along the curve at constant arc-length speed
 (12 units/s by default). Hitting a soldier costs 1 HP (1 HP = one-shot kill by default); a
 projectile resolves against each soldier once; **friendly fire is on**. Hitting an obstacle
 destroys the projectile and blasts craters into every obstacle overlapping the explosion
-(cratered regions no longer block later projectiles). Leaving the map or exceeding the travel
-limit also destroys it.
+(cratered regions no longer block later projectiles). **Leaving the map grants a 3-second
+grace to loop back**: lobbed shots over the top edge or wide arcs curving back from the
+side are not destroyed the instant they cross the border — only 3 continuous seconds
+outside the map kills them. Exceeding the travel limit also destroys a projectile.
 
 **Map**: 48×30 by default (x∈[−24,24], y∈[−15,15]); obstacles (circles/rectangles) and spawn
 points are derived from a seed — the same seed reproduces the exact same map.
@@ -149,7 +154,11 @@ can override them per room).
 fb_client                            # GUI: main menu → local vs AI / online play
 fb_client --selftest 10              # headless: 10 local games
 fb_client --screenshot shot          # auto-play and capture screenshots (dev verification)
+fb_client --theme 1                  # startup theme: 0 deep space / 1 bright / 2 terminal green
 ```
+
+The main menu's "Theme" button cycles through the three color schemes at any time
+(see "Color themes" below).
 
 **Local vs AI**: choose team size, soldiers per player, AI difficulty, HP, obstacle count,
 first turn and input time; you can also pick "role → spectator" to watch AI vs AI without
@@ -164,7 +173,10 @@ the "next match" configuration before starting.
 
 With the server running, just open `http://<server-host>:8000/` in a browser. Browser
 players (including mobile) and C++ players share the same room table — you can fight in the
-same room or mix teams freely.
+same room or mix teams freely. The "Theme" button in the top bar switches color schemes
+(remembered locally in the browser).
+
+![Web client](docs/web_battle.png)
 
 **Spectating**: players and spectators are two distinct member kinds:
 
@@ -178,6 +190,19 @@ same room or mix teams freely.
   "exit spectating" button in the top bar
 - Pure AI spectating: the host switches to spectator and adds AI to both teams — the result
   is an AI-vs-AI match the host watches from start to finish
+
+### Color themes
+
+Three presets: **Deep space** (default), **Bright** (for daylight/projector setups) and
+**Terminal green** (retro CRT). Semantic colors stay stable across themes — team A is
+always blue, team B always red, gold/danger/success each remain recognizable — only the
+backgrounds, panels and battlefield base layer change. Switch in the C++ client's main
+menu (or `--theme N` for the startup theme) and in the web client's top bar; both clients
+share the same theme names and character.
+
+![Three themes (C++ client)](docs/themes_cpp.png)
+
+![Three themes (web client)](docs/themes_web.png)
 
 ## Tests
 
@@ -198,7 +223,8 @@ src/server/   net (asio TCP/WS frame protocol), server (multi-room, 60 Hz tick d
 src/client/   app (state machine), ui_* (screens), render, net_client, headless (tests/screenshots)
 src/tests/    gtest unit tests
 web/static/   web client (vanilla JS, no build step): app.js / render.js / net.js / path.js /
-              sha256.js / strings.js
+              sha256.js / strings.js / sfx.js
+docs/         screenshots (used by the READMEs)
 src/tools/    fb_play: a file-mailbox game client (drop an expression into a file to submit;
               meant for scripts / AI assistants)
 ```

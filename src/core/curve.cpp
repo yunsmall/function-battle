@@ -31,7 +31,8 @@ constexpr double kParamStep = 0.01;   // 极坐标 theta 与参数方程 t 的�
 constexpr double kOdeStep = 0.05;     // dy/dx=f(x,y) 的 RK4 步长
 constexpr double kOde2Step = 0.02;    // (x',y')=(f,g) 的 RK4 步长
 constexpr size_t kMaxPoints = 40000;  // 采样点上限（防玩家写出发散曲线拖垮计算）
-constexpr double kOutMargin = 2.0;    // 超出地图这么多就停止采样（炮弹在那里也会出界销毁）
+constexpr double kOutMargin = 8.0;    // 超出地图这么多才停止采样：给"飞出地图再绕回来"的
+                                      // 曲线留余量（炮弹本身还有 3 秒出界宽限，见 world.cpp）
 constexpr double kMaxParamSpan = 1000.0;  // 极坐标的参数范围上限；参数方程只拿它当不填范围时的默认扫描终点
 
 bool in_bounds(const Vec2& p, const GameConfig& cfg) {

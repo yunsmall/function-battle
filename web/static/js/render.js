@@ -19,6 +19,9 @@
         nextMark: [150, 195, 255, 210],
         projectile: [255, 255, 255],
         pathFaint: [255, 255, 255, 60],
+        trail: [255, 208, 120, 215],
+        spark: [255, 236, 190, 255],
+        plateBg: [8, 10, 18, 170],
         fine: [24, 28, 38],
         mid: [32, 37, 50],
         tick: [128, 138, 175],
@@ -35,9 +38,57 @@
 
     var FONT = 'system-ui, "Microsoft YaHei", "PingFang SC", sans-serif';
 
+    // ---- 配色主题（与 C++ 客户端 ui_theme.cpp 的三套预设对齐）----
+    // COL 是运行时可变对象：换主题 = 先恢复基底再覆盖"色系"字段。语义色（队伍/金/
+    // 血量）跨主题保持性格——A 队永远蓝、B 队永远红——只调底色、网格、障碍与文字系
+    var COL_BASE = {};
+    for (var _bk in COL) COL_BASE[_bk] = COL[_bk];
+    var THEME_OVERRIDES = {
+        dark: {},  // 深空 = 基底原值
+        bright: {
+            background: [246, 247, 250], fine: [232, 235, 242], mid: [219, 224, 234],
+            grid: [206, 212, 225], axis: [118, 128, 152], tick: [92, 102, 126],
+            obstacle: [158, 166, 184], obstacleEdge: [118, 128, 150],
+            teamA: [35, 110, 235], teamB: [222, 62, 62], dead: [152, 152, 158],
+            preview: [200, 148, 28], nextMark: [48, 108, 198, 210],
+            projectile: [40, 46, 60], pathFaint: [40, 46, 60, 70], trail: [200, 148, 28, 235],
+            nameAlive: [70, 78, 96], nameDead: [150, 152, 158],
+            namePlate: [252, 253, 255, 205], tickPlate: [252, 253, 255, 205],
+            lastFunc: [110, 120, 140, 235], hpBack: [224, 228, 236],
+            hpHigh: [24, 156, 84], hpLow: [186, 140, 16],
+            plateBg: [252, 253, 255, 205],
+            spark: [180, 110, 30, 255],
+        },
+        terminal: {
+            background: [6, 14, 8], fine: [12, 26, 15], mid: [18, 38, 22],
+            grid: [26, 52, 30], axis: [60, 120, 70], tick: [100, 160, 110],
+            obstacle: [40, 80, 50], obstacleEdge: [70, 130, 80],
+            dead: [60, 80, 62], preview: [230, 220, 90],
+            nextMark: [150, 235, 170, 210], projectile: [230, 255, 235],
+            pathFaint: [180, 255, 190, 55], trail: [230, 220, 90, 225],
+            nameAlive: [190, 255, 200], nameDead: [110, 140, 118],
+            namePlate: [4, 16, 6, 185], tickPlate: [4, 16, 6, 185],
+            lastFunc: [120, 180, 130, 235], hpBack: [10, 24, 13],
+            hpHigh: [120, 240, 140], hpLow: [240, 220, 80],
+            plateBg: [4, 16, 6, 185],
+            spark: [255, 236, 160, 255],
+        },
+    };
+    function setTheme(name) {
+        var k;
+        for (k in COL_BASE) COL[k] = COL_BASE[k];
+        var ov = THEME_OVERRIDES[name] || THEME_OVERRIDES.dark;
+        for (k in ov) COL[k] = ov[k];
+    }
+
     function css(c) {
         if (c.length < 4) return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
         return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (c[3] / 255).toFixed(4) + ')';
+    }
+
+    // 颜色的 RGB + 指定 alpha（COL 里 3/4 分量的都有：必须先归一，直接取 c[3] 会得 NaN）
+    function rgbA(c, alpha) {
+        return [c[0], c[1], c[2], Math.round(alpha)];
     }
 
     function createRenderer(canvas) {
@@ -162,6 +213,37 @@
             var e = T.toScreen(a.x + (b.x - a.x) * seg[1], a.y + (b.y - a.y) * seg[1]);
             ctx.lineTo(e.x, e.y);
             ctx.stroke();
+        }
+
+        // 流动虚线（C++ draw_path_dashed 的移植）：按屏幕弧长切 dash/gap、相位随时间滚动，
+        // 让预览曲线"活"起来并指示炮弹飞行方向。抽稀语义与 drawPath 一致（跳过点不推进
+        // 落笔点）；线条相位用负的 lineDashOffset 表达——虚线沿路径前进方向流动
+        function drawDashedPath(T, points, col, thickness, dash, gap, phase) {
+            if (!points || points.length < 2) return;
+            var period = dash + gap;
+            ctx.save();
+            ctx.strokeStyle = css(col);
+            ctx.lineWidth = thickness;
+            ctx.setLineDash([dash, gap]);
+            ctx.lineDashOffset = -(phase % period);
+            ctx.beginPath();
+            var prev = T.toScreen(points[0].x, points[0].y);
+            ctx.moveTo(prev.x, prev.y);
+            for (var i = 1; i < points.length; i++) {
+                var next = T.toScreen(points[i].x, points[i].y);
+                var last = (i === points.length - 1);
+                if (!last && Math.abs(next.x - prev.x) < 2 && Math.abs(next.y - prev.y) < 2) {
+                    continue;
+                }
+                if (Math.abs(next.x - prev.x) < 2000 && Math.abs(next.y - prev.y) < 2000) {
+                    ctx.lineTo(next.x, next.y);
+                } else {
+                    ctx.moveTo(next.x, next.y);
+                }
+                prev = next;
+            }
+            ctx.stroke();
+            ctx.restore();
         }
 
         // draw_grid 的移植：每 1 单位细线（玩家要数格子读坐标）、每 5 中线、每 10 主线，轴 2px 最亮
@@ -468,7 +550,7 @@
                 if (cur && s.alive) {
                     var pulse = 0.5 + 0.5 * Math.sin(time * 4);
                     circle(c.x, c.y, half * 2 + pulse * 5,
-                           [255, 214, 90, Math.round(255 * (0.16 + 0.20 * pulse))]);
+                           rgbA(COL.preview, 255 * (0.16 + 0.20 * pulse)));
                 }
                 if (s.alive) {
                     // 轻微投影：方块上移 1px 后从底边露出这一条黑色
@@ -529,6 +611,46 @@
             }
         }
 
+        // 战斗特效（命中冲击环 / 爆炸 / 阵亡碎裂）：条目由 app.js 在消息事件处生成
+        //（对齐 C++ fx.cpp 的 spawn_*），这里现算现画——环形半径按 easeOut(t) 扩散、
+        // 透明度随寿命衰减；粒子位置用解析式 pos + vel*(1-e^(-3t))/3（与 C++ 逐帧阻尼
+        // 积分等价但不依赖帧率），方块自旋随寿命推进
+        function drawFx(T, list, time) {
+            for (var i = 0; i < list.length; i++) {
+                var f = list[i];
+                var age = time - f.t0;
+                if (!(age >= 0) || age >= f.life) continue;
+                var fade = 1 - age / f.life;
+                // 颜色三种写法：null = 主题高光色（COL.projectile）；字符串 = COL 里的
+                // 主题色键（如 'spark'，随主题切换）；数组 = 固定色
+                var c = f.color;
+                if (typeof c === 'string') c = COL[c] || COL.projectile;
+                else if (!c) c = COL.projectile;
+                var ca = (c.length === 4) ? c[3] : 255;  // COL 的色可能没 alpha 分量
+                var col = rgbA(c, ca * fade);
+                if (f.kind === 'ring') {
+                    var et = 1 - (1 - age / f.life) * (1 - age / f.life);  // easeOut
+                    var r = Math.max(0.01, (f.r0 + (f.r1 - f.r0) * et) * T.scale);
+                    var p = T.toScreen(f.pos[0], f.pos[1]);
+                    ctx.strokeStyle = css(col);
+                    ctx.lineWidth = f.width;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else {
+                    var k = (1 - Math.exp(-3 * age)) / 3;
+                    var sp = T.toScreen(f.pos[0] + f.vel[0] * k, f.pos[1] + f.vel[1] * k);
+                    var px = Math.max(1.5, f.size * T.scale);
+                    ctx.save();
+                    ctx.translate(sp.x, sp.y);
+                    ctx.rotate(f.rotv * age);
+                    ctx.fillStyle = css(col);
+                    ctx.fillRect(-px * 0.5, -px * 0.5, px, px);
+                    ctx.restore();
+                }
+            }
+        }
+
         function draw(scene) {
             if (!scene || !scene.cfg) return;
             if (canvas.clientWidth !== W || canvas.clientHeight !== H) resize();
@@ -544,22 +666,30 @@
             ctx.fillStyle = css(COL.background);
             ctx.fillRect(0, 0, W, H);
 
-            // 绘制顺序照 draw_scene 逐行对应：
-            // 炮弹轨迹（最底）→ 网格 → 障碍 → 预览 → 玩家 → 炮弹 → 刻度（最后，信息优先）
-            if (scene.projectilePath && scene.projectilePath.valid()) {
-                drawPath(T, scene.projectilePath.points, COL.pathFaint, 1);
-                // 已飞过的一段加亮（纯观感：一眼看清炮弹走到哪了；弹头停住时亮段也停在撞击处）
-                if (scene.projectileS > 0) {
-                    drawPathUpTo(T, scene.projectilePath, scene.projectileS,
-                                 [255, 255, 255, 150], 2);
-                }
+            // 屏幕震动：场景内容整层随机偏移绘制（HUD 是 DOM 天然不抖；回合横幅是
+            // 信息层、画在震屏层之外也不抖）
+            ctx.save();
+            if (scene.shake && scene.shake > 0.15) {
+                ctx.translate((Math.random() * 2 - 1) * scene.shake,
+                              (Math.random() * 2 - 1) * scene.shake);
             }
+
+            // 绘制顺序照 draw_scene 逐行对应：
+            // 网格 → 障碍 → 炮弹轨迹（压网格/障碍之上，不被切割）→ 预览 → 玩家 → 特效 → 炮弹 → 刻度
             drawGrid(T, cfg);
             drawObstacles(T, scene.obstacles || [], cfg);
+            if (scene.projectilePath && scene.projectilePath.valid()) {
+                drawPath(T, scene.projectilePath.points, COL.pathFaint, 1);
+                // 已飞过的一段加亮（暖金色，与 C++ draw_path_flown 同色）：弹头停住时亮段也停在撞击处
+                if (scene.projectileS > 0) {
+                    drawPathUpTo(T, scene.projectilePath, scene.projectileS, COL.trail, 2.4);
+                }
+            }
             if (scene.previewPath && scene.previewPath.valid()) {
-                // 先画宽而淡的一层做出辉光，再叠细实色（是实线，不是虚线）
-                drawPath(T, scene.previewPath.points, [255, 214, 90, 56], 7);
-                drawPath(T, scene.previewPath.points, COL.preview, 2.2);
+                // 宽而淡的辉光打底 + 流动虚线细线（相位随时间滚动，兼作飞行方向指示）
+                drawPath(T, scene.previewPath.points, rgbA(COL.preview, 46), 7);
+                drawDashedPath(T, scene.previewPath.points, COL.preview, 2.4, 7, 5,
+                               (scene.time * 60) % 12);
             }
             var players = scene.players || [];
             var turn = scene.turn;
@@ -574,33 +704,42 @@
                            turn !== null ? turn.nextSoldier : -1,
                            fn || null, scene.time);
             }
+            // 战斗特效（命中冲击环/爆炸/阵亡碎裂）：压在玩家之上、炮弹之下
+            drawFx(T, scene.fx || [], scene.time);
             // 炮弹：外圈辉光 + 亮核（不分队，与 C++ 同）
             if (scene.projectile) {
                 var pc = T.toScreen(scene.projectile.x, scene.projectile.y);
-                circle(pc.x, pc.y, 11, [255, 226, 150, 46]);
-                circle(pc.x, pc.y, 6.5, [255, 255, 255, 140]);
+                circle(pc.x, pc.y, 11, rgbA(COL.spark, 46));
+                circle(pc.x, pc.y, 6.5, rgbA(COL.projectile, 140));
                 circle(pc.x, pc.y, 3.5, COL.projectile);
             }
-            // 命中/阵亡/炸坑的扩散圈：网页版自己的视觉反馈（C++ 客户端没有），
-            // 时间单位是秒（app 侧的 t0 用 performance.now()/1000）
-            var flashes = scene.flashes || [];
-            for (var fi = 0; fi < flashes.length; fi++) {
-                var f = flashes[fi];
-                var age = (scene.time - f.t0) / 0.5;
-                if (age < 0 || age >= 1) continue;
-                var fp = T.toScreen(f.pos[0], f.pos[1]);
-                var frgb = f.kind === 'hit' ? [255, 82, 82]
-                    : (f.kind === 'death' ? [255, 214, 92] : [138, 148, 172]);
-                ctx.strokeStyle = css([frgb[0], frgb[1], frgb[2], Math.round(255 * (1 - age) * 0.85)]);
-                ctx.lineWidth = 2.5;
-                ctx.beginPath();
-                ctx.arc(fp.x, fp.y, Math.max(0.01, (0.3 + 1.1 * age) * T.scale), 0, Math.PI * 2);
-                ctx.stroke();
-            }
             drawTicks(T, cfg, scene.mirror);
+            ctx.restore();
+
+            // 回合横幅：回合开始瞬间滑入、短暂停留后淡出（与 C++ 的中央横幅同款；
+            // 画在震屏层之外——它是信息层，不该跟着抖）；时间从 t0 起算 1.6 秒
+            if (scene.banner) {
+                var bt = scene.time - scene.banner.t0;
+                if (bt >= 0 && bt < 1.6) {
+                    var inT = Math.min(1, bt / 0.18);                       // 滑入
+                    var outT = Math.max(0, Math.min(1, (1.6 - bt) / 0.5));  // 尾段淡出
+                    var alpha = Math.min(inT, outT);
+                    ctx.font = '600 34px ' + FONT;
+                    var bmw = ctx.measureText(scene.banner.text).width;
+                    var bcx = W * 0.5;
+                    var bcy = H * 0.22 - (1 - inT) * 16;
+                    ctx.fillStyle = css(rgbA(COL.plateBg, COL.plateBg[3] * alpha));
+                    ctx.beginPath();
+                    ctx.roundRect(bcx - bmw * 0.5 - 30, bcy - 12, bmw + 60, 62, 16);
+                    ctx.fill();
+                    var bc = scene.banner.gold ? COL.preview : COL.nameAlive;
+                    ctx.fillStyle = css([bc[0], bc[1], bc[2], Math.round(255 * alpha)]);
+                    ctx.fillText(scene.banner.text, bcx - bmw * 0.5, bcy);
+                }
+            }
         }
 
-        return { draw: draw, resize: resize };
+        return { draw: draw, resize: resize, setTheme: setTheme };
     }
 
     var FGRender = { create: createRenderer };

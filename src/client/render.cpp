@@ -10,22 +10,8 @@
 namespace fg {
 
 namespace {
-// 弹坑/地图底色：必须与 ui_battle 里地图区域的底色一致（弹坑恢复"正常空地"时铺的就是
-// 这层色，用其他深浅会看出色块接缝）
-constexpr Color kBackground{15, 18, 28, 255};
-constexpr Color kFine{24, 28, 38, 255};
-constexpr Color kMid{32, 37, 50, 255};
-constexpr Color kGrid{38, 42, 56, 255};
-constexpr Color kAxis{70, 78, 100, 255};
-constexpr Color kObstacle{78, 86, 110, 255};
-constexpr Color kObstacleEdge{110, 120, 150, 255};
-constexpr Color kTeamA{70, 140, 255, 255};
-constexpr Color kTeamB{255, 90, 90, 255};
-constexpr Color kDead{70, 70, 76, 255};
-constexpr Color kPreview{255, 214, 90, 255};
-constexpr Color kNextMark{150, 195, 255, 210};
-constexpr Color kProjectile{255, 255, 255, 255};
-constexpr Color kPathFaint{255, 255, 255, 60};
+// 战场配色（kArenaBg/kArenaFine/…/kUnitA/kPreview 等）统一在 ui_style.h 定义、
+// 随主题切换（ui_theme.cpp）；本文件只保留不随主题变的绘制细节色
 }  // namespace
 
 View View::fit(const GameConfig& cfg, Rectangle area) {
@@ -66,19 +52,84 @@ void draw_path(const View& view, const Path& path, Color color, float thickness)
 
 namespace {
 
+// 按已飞弧长给轨迹上色：只画"弹头走过"的一段（亮色余迹）。用 Path 的 cum 表判断
+// 每段是否已飞过；与 draw_path 相同的 2px 屏幕抽稀
+void draw_path_flown(const View& view, const Path& path, double travel, Color color,
+                     float thickness) {
+    if (path.points.size() < 2 || path.cum.size() != path.points.size()) return;
+    Vector2 prev = view.to_screen(path.points.front());
+    for (size_t i = 1; i < path.points.size(); ++i) {
+        const Vector2 next = view.to_screen(path.points[i]);
+        const bool last_point = (i + 1 == path.points.size());
+        // 跳过的点不算落笔：prev 保持在上一个落笔点，2px 判定按"与落笔点距离"
+        // 累积推进（与既有 draw_path 相同的抽稀语义）——推进 prev 会让每步都
+        // 满足"太近"而一路跳过，整条曲线只在末点画出一小段
+        if (!last_point && std::abs(next.x - prev.x) < 2.0f &&
+            std::abs(next.y - prev.y) < 2.0f) {
+            continue;
+        }
+        if (std::abs(next.x - prev.x) < 2000.0f && std::abs(next.y - prev.y) < 2000.0f &&
+            path.cum[i] <= travel) {
+            DrawLineEx(prev, next, thickness, color);
+        }
+        prev = next;
+    }
+}
+
+// 流动虚线：按屏幕弧长切 dash/gap 段、相位随时间滚动——让预览曲线"活"起来，
+// 同时用流动方向指示炮弹的飞行方向
+void draw_path_dashed(const View& view, const Path& path, Color color, float thickness,
+                      float dash, float gap, float phase) {
+    if (path.points.size() < 2) return;
+    const float period = dash + gap;
+    float acc = std::fmod(phase, period);
+    Vector2 prev = view.to_screen(path.points.front());
+    for (size_t i = 1; i < path.points.size(); ++i) {
+        const Vector2 next = view.to_screen(path.points[i]);
+        const bool last_point = (i + 1 == path.points.size());
+        if (!last_point && std::abs(next.x - prev.x) < 2.0f &&
+            std::abs(next.y - prev.y) < 2.0f) {
+            continue;  // 同 draw_path：跳过点不推进 prev（2px 判定基于上一个落笔点）
+        }
+        if (std::abs(next.x - prev.x) >= 2000.0f || std::abs(next.y - prev.y) >= 2000.0f) {
+            prev = next;
+            continue;
+        }
+        const float seg = std::sqrt((next.x - prev.x) * (next.x - prev.x) +
+                                    (next.y - prev.y) * (next.y - prev.y));
+        float pos = 0.0f;
+        while (pos < seg) {
+            const float m = std::fmod(acc + pos, period);
+            if (m < dash) {
+                const float endpos = std::min(pos + (dash - m), seg);
+                const Vector2 a{prev.x + (next.x - prev.x) * (pos / seg),
+                                prev.y + (next.y - prev.y) * (pos / seg)};
+                const Vector2 b{prev.x + (next.x - prev.x) * (endpos / seg),
+                                prev.y + (next.y - prev.y) * (endpos / seg)};
+                DrawLineEx(a, b, thickness, color);
+                pos = endpos;
+            } else {
+                pos += period - m;
+            }
+        }
+        acc = std::fmod(acc + seg, period);
+        prev = next;
+    }
+}
+
 // 某一档网格线的颜色与线宽（0 是坐标轴最亮；10 的倍数主线；5 的倍数中线；其余细线）
 void grid_line_style(int v, Color& color, float& width) {
     if (v == 0) {
-        color = kAxis;
+        color = kArenaAxis;
         width = 2.0f;
     } else if (v % 10 == 0) {
-        color = kGrid;
+        color = kArenaGrid;
         width = 1.0f;
     } else if (v % 5 == 0) {
-        color = kMid;
+        color = kArenaMid;
         width = 1.0f;
     } else {
-        color = kFine;
+        color = kArenaFine;
         width = 1.0f;
     }
 }
@@ -89,7 +140,7 @@ void draw_grid(const View& view, const GameConfig& cfg) {
          ++x) {
         const Vector2 a = view.to_screen(Vec2(x, cfg.world.map_y_min));
         const Vector2 b = view.to_screen(Vec2(x, cfg.world.map_y_max));
-        Color color = kFine;
+        Color color = kArenaFine;
         float width = 1.0f;
         grid_line_style(x, color, width);
         DrawLineEx(a, b, width, color);
@@ -98,7 +149,7 @@ void draw_grid(const View& view, const GameConfig& cfg) {
          ++y) {
         const Vector2 a = view.to_screen(Vec2(cfg.world.map_x_min, y));
         const Vector2 b = view.to_screen(Vec2(cfg.world.map_x_max, y));
-        Color color = kFine;
+        Color color = kArenaFine;
         float width = 1.0f;
         grid_line_style(y, color, width);
         DrawLineEx(a, b, width, color);
@@ -108,7 +159,6 @@ void draw_grid(const View& view, const GameConfig& cfg) {
 // 坐标刻度：没有数字玩家没法对着坐标写函数瞄准。
 // x 值标在 x 轴下方（居中于刻度线），y 值标在 y 轴左侧（右对齐），每 5 单位一个
 void draw_ticks(const View& view, const GameConfig& cfg, const std::map<int, Font>* fonts) {
-    constexpr Color kTick{128, 138, 175, 255};
     const auto [font, fs] = pick_tier_font(fonts, 13.0f);
     const Vector2 origin = view.to_screen(Vec2(0.0, 0.0));
     char buf[16];
@@ -118,8 +168,8 @@ void draw_ticks(const View& view, const GameConfig& cfg, const std::map<int, Fon
         const float y = cy - m.y * 0.5f;
         // 淡底牌：数字压到网格、障碍或名字上也能读
         DrawRectangleRounded(Rectangle{x - 4.0f, y - 2.0f, m.x + 8.0f, m.y + 4.0f}, 0.5f, 4,
-                             Color{10, 12, 20, 170});
-        DrawTextEx(font, buf, Vector2{x, y}, fs, 1.0f, kTick);
+                             kPlateBg);
+        DrawTextEx(font, buf, Vector2{x, y}, fs, 1.0f, kArenaTick);
     };
     for (double x = std::ceil(cfg.world.map_x_min / 5.0) * 5.0; x <= cfg.world.map_x_max; x += 5.0) {
         // 镜像视角下显示的是取负的世界坐标。刻度数字是"世界坐标的展示"而不是
@@ -437,7 +487,7 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
     for (size_t si = 0; si < p.soldiers.size(); ++si) {
         const Soldier& s = p.soldiers[si];
         const Vector2 c = view.to_screen(s.pos);
-        const Color body = !s.alive ? kDead : (p.team == Team::A ? kTeamA : kTeamB);
+        const Color body = !s.alive ? kUnitDead : (p.team == Team::A ? kUnitA : kUnitB);
         // 当前出手的士兵：呼吸光圈（一眼看出轮到谁）
         const bool cur = is_current && static_cast<int>(si) == p.current_soldier;
         if (cur && s.alive) {
@@ -451,7 +501,7 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
         const Rectangle face{rect.x, rect.y - 1.0f, rect.width, rect.height};
         DrawRectangleRec(face, body);
         if (is_me) {
-            DrawRectangleLinesEx(face, 2.0f, WHITE);
+            DrawRectangleLinesEx(face, 2.0f, kProjectile);
         } else if (cur) {
             DrawRectangleLinesEx(face, 2.0f, kPreview);
         }
@@ -464,11 +514,10 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
             const float w = 30.0f;
             const float frac = static_cast<float>(s.hp) / static_cast<float>(s.max_hp);
             const Rectangle bar{c.x - w / 2, c.y + half + 4.0f, w, 5.0f};
-            DrawRectangleRounded(bar, 0.5f, 4, Color{30, 33, 44, 255});
+            DrawRectangleRounded(bar, 0.5f, 4, kInputBg);
             if (frac > 0.0f) {
                 DrawRectangleRounded(Rectangle{bar.x, bar.y, w * frac, bar.height}, 0.5f, 4,
-                                     frac > 0.5f ? Color{90, 220, 120, 255}
-                                                 : Color{235, 190, 80, 255});
+                                     frac > 0.5f ? kSuccess : kGold);
             }
         }
     }
@@ -484,13 +533,13 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
         if (anchor->alive) {
             const float box_h = fs + 5.0f + (has_fn ? fn_fs + 4.0f : 0.0f);
             DrawRectangleRounded(Rectangle{np.x - 5.0f, np.y - 2.0f, m.x + 10.0f, box_h}, 0.5f, 5,
-                                 Color{10, 12, 20, 165});
+                                 kPlateBg);
         }
-        DrawTextEx(font, p.name.c_str(), np, fs, 1.0f, anchor->alive ? LIGHTGRAY : GRAY);
+        DrawTextEx(font, p.name.c_str(), np, fs, 1.0f, anchor->alive ? kNameAlive : kNameDead);
         if (has_fn) {
             const Vector2 fm = MeasureTextEx(fn_font, last_func->c_str(), fn_fs, 1.0f);
             DrawTextEx(fn_font, last_func->c_str(), Vector2{c.x - fm.x * 0.5f, np.y + fs + 2.0f},
-                       fn_fs, 1.0f, Color{150, 158, 180, 235});
+                       fn_fs, 1.0f, kTextDim);
         }
     }
 }
@@ -500,18 +549,24 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
 void draw_scene(const View& view, const RenderScene& scene) {
     if (!scene.cfg) return;
 
-    // 炮弹的完整轨迹（淡色，帮助理解弹道）
-    if (scene.projectile_path) {
-        draw_path(view, *scene.projectile_path, kPathFaint, 1.0f);
-    }
     draw_grid(view, *scene.cfg);
     if (scene.obstacles) {
         draw_obstacles(view, *scene.obstacles, *scene.cfg);
     }
-    // 预览轨迹：先画宽而淡的一层做出辉光，再叠细实色
+    // 炮弹轨迹：全程淡线打底 + 已飞段亮色余迹（弹头扫过的部分）。
+    // 压网格/障碍之上：网格线不切割轨迹，穿障段也可见（轨迹是分析层）
+    if (scene.projectile_path) {
+        draw_path(view, *scene.projectile_path, kPathFaint, 1.0f);
+        if (scene.has_projectile) {
+            draw_path_flown(view, *scene.projectile_path, scene.projectile_travel, kTrail,
+                            2.4f);
+        }
+    }
+    // 预览轨迹：宽而淡的辉光打底 + 流动虚线细线（相位随时间滚动，兼作飞行方向指示）
     if (scene.preview) {
-        draw_path(view, *scene.preview, Fade(kPreview, 0.22f), 7.0f);
-        draw_path(view, *scene.preview, kPreview, 2.2f);
+        draw_path(view, *scene.preview, Fade(kPreview, 0.18f), 7.0f);
+        const float phase = std::fmod(scene.time * 60.0f, 12.0f);
+        draw_path_dashed(view, *scene.preview, kPreview, 2.4f, 7.0f, 5.0f, phase);
     }
     // 玩家
     if (scene.players) {
@@ -526,10 +581,12 @@ void draw_scene(const View& view, const RenderScene& scene) {
                         scene.next_soldier, fn, scene.fonts, scene.time);
         }
     }
+    // 战斗特效（命中冲击环/爆炸/碎裂）：压在玩家之上、炮弹之下
+    if (scene.fx != nullptr) scene.fx->draw(view);
     // 炮弹：外圈辉光 + 亮核
     if (scene.has_projectile) {
         const Vector2 c = view.to_screen(scene.projectile);
-        DrawCircleV(c, 11.0f, Fade(Color{255, 226, 150, 255}, 0.18f));
+        DrawCircleV(c, 11.0f, Fade(kSpark, 0.18f));
         DrawCircleV(c, 6.5f, Fade(kProjectile, 0.55f));
         DrawCircleV(c, 3.5f, kProjectile);
     }

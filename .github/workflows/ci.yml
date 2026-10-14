@@ -80,3 +80,5 @@ jobs:
         with:
           files: dist/**/*.zip
           generate_release_notes: true
+          # CI 先发 pre-release：包在真人过一遍后再手动转为正式 release
+          prerelease: true

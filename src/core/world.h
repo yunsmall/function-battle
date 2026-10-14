@@ -84,6 +84,8 @@ struct Projectile {
     // 已结算过伤害的士兵（key = player_id * 16 + soldier；穿透时每个士兵只结算一次）
     std::vector<long> hit_soldiers;
     bool armed = false;  // 炮口保护是否已解除（解除前发射者本人免疫本弹）
+    double out_mark = -1.0;  // 出界瞬间的 travel（-1 = 当前在图内）；配 kOutGraceSec 计宽限
+    double flight_time = 0.0;  // 飞行累计时长（秒）；配 kMaxFlightSec 兜底毒配置的锁死
     bool dead = false;
 };
 

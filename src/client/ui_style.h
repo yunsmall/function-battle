@@ -33,21 +33,55 @@ inline std::pair<Font, float> pick_tier_font(const std::map<int, Font>* fonts, f
     return {best->second, static_cast<float>(best->first)};
 }
 
-// ---- 主题配色（深色底 + 青蓝/珊瑚红队伍色）----
-inline constexpr Color kBgTop{12, 15, 23, 255};
-inline constexpr Color kBgBottom{21, 26, 40, 255};
-inline constexpr Color kPanel{25, 30, 45, 245};
-inline constexpr Color kPanelSoft{31, 37, 55, 255};
-inline constexpr Color kPanelBorder{50, 58, 82, 255};
-inline constexpr Color kAccent{78, 168, 255, 255};
-inline constexpr Color kTeamA{78, 168, 255, 255};
-inline constexpr Color kTeamB{255, 107, 107, 255};
-inline constexpr Color kTextMain{228, 233, 245, 255};
-inline constexpr Color kTextDim{138, 148, 172, 255};
-inline constexpr Color kTextFaint{96, 104, 124, 255};
-inline constexpr Color kGold{255, 214, 92, 255};
-inline constexpr Color kDanger{255, 82, 82, 255};
-inline constexpr Color kSuccess{91, 217, 139, 255};
+// ---- 主题配色 ----
+// 颜色是 inline 变量（非常量）：主题切换（ui_theme.cpp）直接改写这里的值，全部
+// 绘制处照常按名字读取。语义色（队伍/金/危险/成功）在每套主题里保持同样的性格，
+// 换主题只调底色、面板、文字与战场基础层，不会把队伍色认错
+inline Color kBgTop{12, 15, 23, 255};
+inline Color kBgBottom{21, 26, 40, 255};
+inline Color kPanel{25, 30, 45, 245};
+inline Color kPanelSoft{31, 37, 55, 255};
+inline Color kPanelBorder{50, 58, 82, 255};
+inline Color kAccent{78, 168, 255, 255};
+inline Color kTeamA{78, 168, 255, 255};
+inline Color kTeamB{255, 107, 107, 255};
+inline Color kTextMain{228, 233, 245, 255};
+inline Color kTextDim{138, 148, 172, 255};
+inline Color kTextFaint{96, 104, 124, 255};
+inline Color kTextHover{255, 255, 255, 255};  // 悬停时的高对比文字色（浅色主题要取深色）
+inline Color kOnAccent{12, 20, 34, 255};      // 强调色（按钮）底上的文字（明亮主题 accent 偏深，改用白）
+inline Color kGold{255, 214, 92, 255};
+inline Color kDanger{255, 82, 82, 255};
+inline Color kSuccess{91, 217, 139, 255};
+
+// ---- 战场配色（render.cpp 绘制场景用；同样随主题切换）----
+inline Color kArenaBg{15, 18, 28, 255};       // 战场底色（弹坑也用它盖，接缝不可见）
+inline Color kArenaFine{24, 28, 38, 255};     // 网格：普通细线
+inline Color kArenaMid{32, 37, 50, 255};      // 网格：5 的倍数中线
+inline Color kArenaGrid{38, 42, 56, 255};     // 网格：10 的倍数主线
+inline Color kArenaAxis{70, 78, 100, 255};    // 坐标轴
+inline Color kArenaTick{128, 138, 175, 255};  // 刻度数字
+inline Color kObstacle{78, 86, 110, 255};
+inline Color kObstacleEdge{110, 120, 150, 255};
+inline Color kUnitA{70, 140, 255, 255};   // 战场上 A 队士兵（与特效队伍色同源）
+inline Color kUnitB{255, 90, 90, 255};
+inline Color kUnitDead{70, 70, 76, 255};
+inline Color kNameAlive{200, 200, 200, 255};  // 战场上玩家名字（存活/阵亡）
+inline Color kNameDead{130, 130, 130, 255};
+inline Color kPreview{255, 214, 90, 255};
+inline Color kNextMark{150, 195, 255, 210};
+inline Color kProjectile{255, 255, 255, 255};  // 弹头亮核/高光特效色
+inline Color kPathFaint{255, 255, 255, 60};    // 弹道全程淡线
+inline Color kTrail{255, 208, 120, 215};       // 已飞段余迹（浅色主题取深金，否则糊在浅底上）
+inline Color kSpark{255, 236, 190, 255};       // 火花/光晕基色（命中碎屑、弹头外圈辉光）
+inline Color kPlateBg{10, 12, 20, 170};        // 半透明底牌（刻度/名字牌/横幅底），垫在文字下
+inline Color kInputBg{16, 20, 31, 255};        // 内凹槽底色（输入框/进度条/血条底）
+
+// ---- 主题控制（实现见 ui_theme.cpp）----
+int theme_count();
+const char* theme_name(int i);  // 显示名（字形已登记）
+int theme_index();              // 当前主题序号
+void apply_theme(int i);        // 立即生效（越界值自动绕回）
 
 // ---- 模式表 ----
 inline constexpr const char* kModeNames[] = {"y = f(x)",  "x = f(y)",        "r = f(t)",
@@ -173,6 +207,8 @@ inline constexpr const char* kUiTexts[] = {
     "曲线会被整体平移，让出发点正好落在你身上；加任意常数（如 +5）不影响弹道",
     // 兜底用字：零散出现在提示句、括号与控制台输出里，集中列出保证字形完整
     "。、上下与个二从似位保分变右名响多字存客家左常影循总我或截户打持支显本检次死汇沿点玩环疑示积程端终自要角起这里需项（）｜跳过",
+    // 主题切换（主菜单按钮与主题名）
+    "主题：", "深空", "明亮", "终端绿",
 };
 
 }  // namespace fg

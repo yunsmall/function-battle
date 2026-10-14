@@ -73,6 +73,11 @@ void App::draw_menu() {
     if (ui_button(Rectangle{bx, 460.0f, bw, bh}, "退出游戏")) {
         quit_ = true;  // 交给主循环退出，让析构正常清理（网络连接等）
     }
+    // 主题切换：循环预设配色（深空 → 明亮 → 终端绿），立即全界面生效
+    if (ui_button(Rectangle{bx, 540.0f, bw, bh},
+                  std::string("主题：") + theme_name(theme_index()))) {
+        apply_theme(theme_index() + 1);
+    }
 
     // 版本脚注（版本号来自 CMake 的 project(VERSION)，与发布包一致）
     text("v" FG_VERSION " · C++ / raylib", 16.0f, kWinH - 30.0f, 15.0f, kTextFaint);

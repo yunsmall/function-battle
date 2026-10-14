@@ -235,8 +235,7 @@ void App::draw_room_area(const Rectangle& left, const Rectangle& right) {
         DrawRectangleRounded(row, 0.35f, 6, kPanelSoft);
         // 队色条：观战者用灰色，与两队颜色明确区分（它不是"第三种队"）
         DrawRectangleRounded(Rectangle{row.x + 6.0f, row.y + 8.0f, 5.0f, row.height - 16.0f}, 0.6f,
-                             4, spectating ? Color{116, 120, 136, 255}
-                                           : (team == "A" ? kTeamA : kTeamB));
+                             4, spectating ? kUnitDead : (team == "A" ? kTeamA : kTeamB));
         std::string label = json_str(m, "name", "?");
         if (spectating) {
             label += "（观战者）";

@@ -246,7 +246,8 @@ CurveCandidate evaluate_candidate(const CurveRequest& req, const Vec2& origin, c
                 }
             }
             if (blocked) break;
-            // 采样已保证路径点在界内（出界即截断），这里只是防御
+            // 采样会保留少量出界段（给"绕回来"留的宽限），AI 评估按严格地图边界
+            // 截断：只评估可见段，保守但不出错
             if (p.x() < cfg.world.map_x_min || p.x() > cfg.world.map_x_max ||
                 p.y() < cfg.world.map_y_min || p.y() > cfg.world.map_y_max) {
                 break;

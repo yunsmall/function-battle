@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "curve.h"
+#include "fx.h"
 #include "world.h"
 
 namespace fg {
@@ -51,7 +52,8 @@ struct RenderScene {
     // 各玩家"最近用过的函数"（player id → 文本）：显示在名字牌下方（可空）
     const std::map<int, std::string>* last_func = nullptr;
     const std::map<int, Font>* fonts = nullptr;  // 档位字体表（App::fonts_）；文字按最近档绘制
-    float time = 0.0f;        // 秒；呼吸光圈等动画
+    const FxSystem* fx = nullptr;  // 战斗特效（命中/爆炸/碎裂）
+    float time = 0.0f;        // 秒；呼吸光圈、预览虚线相位等动画
 };
 
 // 绘制整个对战场景（调用方负责 BeginDrawing/EndDrawing 与裁剪区域）

@@ -72,6 +72,7 @@ int App::run_screenshot(const std::string& path) {
     InitWindow(kWinW, kWinH, "函数对战 Function Battle");
     SetTargetFPS(60);
     load_ui_font();
+    screenshot_mode_ = true;  // 切屏黑场过渡会压暗截图：工具模式直接跳过
 
     // 单机设置界面（含"对局身份"选择；选中"观战"以展示说明文案）
     screen_ = Screen::LocalSetup;

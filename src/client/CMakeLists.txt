@@ -3,7 +3,10 @@ find_package(cxxopts CONFIG REQUIRED)
 add_executable(fb_client
     main.cpp
     app.cpp           # 应用状态与主循环：网络消息处理、提交与预览
+    fx.cpp            # 战斗特效（命中/爆炸/碎裂），纯表现层
+    sfx.cpp           # 合成音效（无音频资源文件）
     ui_common.cpp     # 文本/按钮/输入框等 UI 小工具与字体加载
+    ui_theme.cpp      # 主题切换（三套预设配色，改写 ui_style.h 的色板）
     ui_menu.cpp       # 主菜单 + 单机人机配置
     ui_lobby.cpp      # 联机：大厅 / 创建房间 / 房间准备界面
     ui_battle.cpp     # 对战界面与结算

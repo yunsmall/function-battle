@@ -114,7 +114,7 @@ void App::draw_battle() {
             const float frac = static_cast<float>(
                 std::clamp(battle_.input_left / battle_.cfg.match.input_seconds, 0.0, 1.0));
             const Rectangle track{kWinW - 470.0f, 18.0f, 300.0f, 12.0f};
-            DrawRectangleRounded(track, 0.5f, 6, Color{16, 20, 31, 255});
+            DrawRectangleRounded(track, 0.5f, 6, kInputBg);
             const bool urgent = battle_.input_left < 5.0 &&
                                 battle_.current_player == battle_.my_id;
             const Color cc = urgent
@@ -187,7 +187,7 @@ void App::draw_battle() {
     }
 
     // ---- 地图 ----
-    DrawRectangleRounded(map_area, 0.02f, 8, Color{15, 18, 28, 255});
+    DrawRectangleRounded(map_area, 0.02f, 8, kArenaBg);
     View view = View::fit(battle_.cfg, map_area);
     view.mirror = am_i_mirrored();
     RenderScene scene;
@@ -198,18 +198,65 @@ void App::draw_battle() {
     scene.has_projectile = battle_.has_projectile;
     scene.projectile = battle_.projectile;
     scene.projectile_path = battle_.has_path ? &battle_.projectile_path : nullptr;
+    scene.projectile_travel = battle_.projectile_travel;
     scene.my_id = battle_.my_id;
     scene.current_player = battle_.current_player;
     scene.next_player = battle_.next_player;
     scene.next_soldier = battle_.next_soldier;
     scene.last_func = &battle_.last_func;
     scene.fonts = &fonts_;
+    scene.fx = &fx_;
     scene.time = static_cast<float>(GetTime());
     BeginScissorMode(static_cast<int>(map_area.x), static_cast<int>(map_area.y),
                      static_cast<int>(map_area.width), static_cast<int>(map_area.height));
-    draw_scene(view, scene);
+    // 屏幕震动：整个地图内容按随机偏移绘制（HUD 不抖）；只在有强度时套相机
+    if (shake_ > 0.15f) {
+        Camera2D cam{};
+        cam.offset = Vector2{static_cast<float>(GetRandomValue(-100, 100)) / 100.0f * shake_,
+                             static_cast<float>(GetRandomValue(-100, 100)) / 100.0f * shake_};
+        cam.target = Vector2{0.0f, 0.0f};
+        cam.rotation = 0.0f;
+        cam.zoom = 1.0f;
+        BeginMode2D(cam);
+        draw_scene(view, scene);
+        EndMode2D();
+    } else {
+        draw_scene(view, scene);
+    }
     EndScissorMode();
     DrawRectangleRoundedLines(map_area, 0.02f, 8, kPanelBorder);
+
+    // 回合横幅：回合开始瞬间滑入、短暂停留后淡出（纯表现）
+    if (battle_.active && battle_.winner < 0 && battle_.current_player >= 0) {
+        const float bt = static_cast<float>(GetTime() - battle_.turn_begin_time);
+        if (bt >= 0.0f && bt < 1.6f) {
+            std::string who;
+            bool mine = false;
+            const std::vector<Player>& pl =
+                battle_.players ? *battle_.players : battle_.online_players;
+            for (const auto& p : pl) {
+                if (p.id == battle_.current_player) {
+                    who = p.name;
+                    mine = (p.id == battle_.my_id);
+                }
+            }
+            if (!who.empty()) {
+                const std::string label = mine ? "你的回合" : ("轮到 " + who);
+                const float in_t = std::min(1.0f, bt / 0.18f);                    // 滑入
+                const float out_t = std::clamp((1.6f - bt) / 0.5f, 0.0f, 1.0f);   // 尾段淡出
+                const float alpha = std::min(in_t, out_t);
+                const float fs = 34.0f;
+                const float tw = text_width(label, fs);
+                const float cx = map_area.x + map_area.width * 0.5f;
+                const float cy = map_area.y + map_area.height * 0.22f - (1.0f - in_t) * 16.0f;
+                const Color c = mine ? kGold : kTextMain;
+                DrawRectangleRounded(
+                    Rectangle{cx - tw * 0.5f - 30.0f, cy - 12.0f, tw + 60.0f, fs + 28.0f}, 0.6f, 8,
+                    Fade(kPlateBg, alpha));
+                text(label, cx - tw * 0.5f, cy, fs, Fade(c, alpha));
+            }
+        }
+    }
 
     // ---- 右侧队伍面板 ----
     DrawRectangleRounded(side, 0.05f, 8, kPanel);
@@ -238,12 +285,11 @@ void App::draw_battle() {
                     const bool cur = (p.id == battle_.current_player);
                     const Rectangle row{side.x + 12.0f, y, side.width - 24.0f, row_h};
                     if (cur) {
-                        DrawRectangleRounded(row, 0.4f, 6, Color{46, 58, 84, 255});
+                        DrawRectangleRounded(row, 0.4f, 6, ColorLerp(kPanelSoft, kAccent, 0.25f));
                     }
                     // 存活指示灯（行内元素都按行高居中：行高会随人数收缩）
                     const Vector2 dot{row.x + 16.0f, row.y + row.height * 0.5f};
-                    DrawCircleV(dot, 5.0f,
-                                p.any_alive() ? team_colors[team] : Color{70, 74, 88, 255});
+                    DrawCircleV(dot, 5.0f, p.any_alive() ? team_colors[team] : kUnitDead);
                     std::string label = p.name;
                     if (p.id == battle_.my_id) label += "（你）";
                     if (p.is_ai) label += "（人机）";
@@ -262,7 +308,7 @@ void App::draw_battle() {
                         for (int si = 0; si < ns; ++si) {
                             const Soldier& s = p.soldiers[static_cast<size_t>(si)];
                             const Rectangle hb{hx, hy, seg_w, 7.0f};
-                            DrawRectangleRounded(hb, 0.5f, 4, Color{16, 20, 31, 255});
+                            DrawRectangleRounded(hb, 0.5f, 4, kInputBg);
                             if (s.alive) {
                                 const float frac = static_cast<float>(s.hp) /
                                                    static_cast<float>(std::max(1, s.max_hp));
@@ -357,8 +403,8 @@ void App::draw_battle() {
         const Rectangle submit_btn{bottom.x + bottom.width - 218.0f, ctrl_y, 200.0f, 46.0f};
         const bool hover = CheckCollisionPointRec(GetMousePosition(), submit_btn);
         DrawRectangleRounded(submit_btn, 0.4f, 8,
-                             can ? (hover ? Color{96, 186, 255, 255} : kAccent)
-                                 : Color{52, 58, 76, 255});
+                             can ? (hover ? ColorLerp(kAccent, WHITE, 0.25f) : kAccent)
+                                 : kPanelSoft);
         // 禁用时的文案按身份/阶段区分：观战者是"观战中…"；参战者在等对手回合是
         // "等待对手…"（旧文案对参战者显示"观战中"会让人误解）；结算后是"对局结束"
         std::string stext = "提交函数";
@@ -370,7 +416,7 @@ void App::draw_battle() {
         }
         const float stw = text_width(stext, 22.0f);
         text(stext, submit_btn.x + (submit_btn.width - stw) * 0.5f, submit_btn.y + 11.0f, 22.0f,
-             can ? Color{10, 18, 30, 255} : kTextFaint);
+             can ? kOnAccent : kTextFaint);
         // 手绘按钮同样要消费点击（否则连带清掉输入框焦点）；帮助面板打开时不可响应
         if (can && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !help_open_) {
             ui_click_consumed_ = true;
@@ -407,7 +453,7 @@ void App::draw_battle() {
                 }
             }
         } else {
-            DrawRectangleRounded(again, 0.4f, 8, Color{44, 50, 66, 255});
+            DrawRectangleRounded(again, 0.4f, 8, kPanelSoft);
             const std::string s = can_restart ? "等待开始" : "等待房主";
             const float w = text_width(s, 20.0f);
             text(s, again.x + (again.width - w) * 0.5f, again.y + 15.0f, 20.0f, kTextFaint);
@@ -439,7 +485,8 @@ void App::draw_battle() {
         // 关闭按钮自己判定：面板打开期间 ui_button 整体被锁，这里绕过锁
         const Rectangle close{card.x + card.width - 116.0f, card.y + 18.0f, 88.0f, 36.0f};
         const bool close_hover = CheckCollisionPointRec(GetMousePosition(), close);
-        DrawRectangleRounded(close, 0.35f, 8, close_hover ? Color{52, 62, 86, 255} : kPanelSoft);
+        DrawRectangleRounded(close, 0.35f, 8,
+                             close_hover ? ColorLerp(kPanelBorder, kTextMain, 0.3f) : kPanelSoft);
         DrawRectangleRoundedLines(close, 0.35f, 8, kPanelBorder);
         text("关闭", close.x + 26.0f, close.y + 8.0f, 19.0f, kTextMain);
         if (close_hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {

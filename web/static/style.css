@@ -13,7 +13,65 @@
     --faint: #60687c;
     --gold: #ffd65c;
     --danger: #ff5252;
+    --input-bg: #0e1220;
+    --row-bg: #141927;
+    --tag-bg: #2a3148;
+    --on-accent: #0c1422;
+    --accent-glow: rgba(78, 168, 255, 0.40);
+    --accent-glow-weak: rgba(78, 168, 255, 0.12);
 }
+
+/* ---- 配色主题（与 C++ 客户端 ui_theme.cpp 对齐：深空 / 明亮 / 终端绿）----
+   canvas 的战场色在 render.js 的 THEME_OVERRIDES 里同表切换；队伍语义色跨主题保持 */
+body[data-theme="bright"] {
+    --bg-top: #eef0f5;
+    --bg-bottom: #e0e5ef;
+    --panel: #fbfcff;
+    --panel-soft: #eef1f7;
+    --border: #c2cbdb;
+    --accent: #2678dc;
+    --team-a: #2678dc;
+    --team-b: #e23c3c;
+    --text: #1e2434;
+    --dim: #5a6478;
+    --faint: #96a0b4;
+    --gold: #b8860b;
+    --danger: #d23232;
+    --input-bg: #e8ecf3;
+    --row-bg: #eef1f7;
+    --tag-bg: #dee4ee;
+    --on-accent: #ffffff;
+    --accent-glow: rgba(38, 120, 220, 0.35);
+    --accent-glow-weak: rgba(38, 120, 220, 0.10);
+}
+body[data-theme="bright"] .tag.host { background: #f3e5c0; color: #8a6d1a; }
+body[data-theme="bright"] .tag.you { background: #d8e6f8; color: #1f5aa8; }
+body[data-theme="bright"] .tag.ai { background: #e8dff0; }
+
+body[data-theme="terminal"] {
+    --bg-top: #040a06;
+    --bg-bottom: #08120a;
+    --panel: #0a160d;
+    --panel-soft: #0e1e11;
+    --border: #1e4626;
+    --accent: #50dc78;
+    --team-a: #5aaaff;
+    --team-b: #ff645f;
+    --text: #b4ffbe;
+    --dim: #6eaa78;
+    --faint: #4c8656;
+    --gold: #f0dc50;
+    --danger: #ff5a50;
+    --input-bg: #08140a;
+    --row-bg: #0e1e11;
+    --tag-bg: #12331a;
+    --on-accent: #06120a;
+    --accent-glow: rgba(80, 220, 120, 0.40);
+    --accent-glow-weak: rgba(80, 220, 120, 0.12);
+}
+body[data-theme="terminal"] .tag.host { background: #3d3a12; color: #f0dc50; }
+body[data-theme="terminal"] .tag.you { background: #10304a; color: #6fc0ff; }
+body[data-theme="terminal"] .tag.ai { background: #2a1633; }
 
 * { box-sizing: border-box; }
 
@@ -47,6 +105,8 @@ body {
     flex: none;
 }
 .brand { font-size: 17px; font-weight: 600; letter-spacing: 1px; }
+.top-right { display: flex; align-items: center; gap: 12px; }
+#btn-theme { font-size: 12px; padding: 4px 10px; }
 .conn { font-size: 13px; color: var(--dim); }
 .conn::before { content: "● "; color: #5bd98b; }
 .conn.off::before { color: var(--danger); }
@@ -65,17 +125,22 @@ button {
     font-size: 13px;
     cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
+/* 悬停呼吸：光晕随正弦起伏（纯表现，避免"死板"的高亮；与 C++ 按钮呼吸同款） */
+button:hover:not(:disabled) { border-color: var(--accent); animation: btn-breathe 1s ease-in-out infinite alternate; }
+@keyframes btn-breathe {
+    from { box-shadow: 0 0 2px var(--accent-glow-weak); }
+    to { box-shadow: 0 0 9px var(--accent-glow); }
+}
 button:disabled { opacity: 0.45; cursor: default; }
-button.active { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 button.primary:hover:not(:disabled) { filter: brightness(1.1); }
 button.big { width: 100%; padding: 11px; font-size: 15px; margin-top: 14px; }
 button.mini { font-size: 11px; padding: 2px 8px; }
 button.mini.danger { color: var(--danger); border-color: #5a2f36; }
 
 input, select {
-    background: #0e1220;
+    background: var(--input-bg);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -86,7 +151,7 @@ input, select {
 input:focus, select:focus { outline: none; border-color: var(--accent); }
 input.small { width: 84px; }
 
-select option { background: #141927; }
+select option { background: var(--row-bg); }
 
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.center { justify-content: center; }
@@ -128,10 +193,10 @@ select option { background: #141927; }
 .room-cols li {
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     padding: 5px 8px; margin-bottom: 4px;
-    background: #141927; border-radius: 7px; font-size: 13px;
+    background: var(--row-bg); border-radius: 7px; font-size: 13px;
 }
 .member-name { flex: 1; min-width: 0; }
-.tag { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: #2a3148; color: var(--dim); white-space: nowrap; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--tag-bg); color: var(--dim); white-space: nowrap; }
 .tag.host { background: #4a3d16; color: var(--gold); }
 .tag.you { background: #16324d; color: var(--accent); }
 .tag.ai { background: #33253a; }
@@ -169,7 +234,7 @@ select option { background: #141927; }
 }
 #sidebar h3 { margin: 0 0 6px; font-size: 13px; color: var(--dim); font-weight: 500; }
 #event-log { flex: 1; overflow-y: auto; font-size: 12.5px; }
-#event-log .entry { padding: 2px 0; border-bottom: 1px dotted #232a3d; }
+#event-log .entry { padding: 2px 0; border-bottom: 1px dotted var(--border); }
 
 #input-bar { grid-area: input; display: flex; flex-direction: column; gap: 8px; }
 #mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -189,6 +254,14 @@ select option { background: #141927; }
     border-radius: 10px;
 }
 #over-text { font-size: 30px; font-weight: 700; color: var(--gold); }
+
+/* ---- 界面切换过渡（对齐 C++ 客户端切屏的 0.16 秒黑场淡出） ---- */
+#screen-fade {
+    position: fixed; inset: 0; z-index: 45;
+    background: #080a10; opacity: 0; pointer-events: none;
+}
+#screen-fade.play { animation: screen-fade 0.16s ease-out; }
+@keyframes screen-fade { from { opacity: 1; } to { opacity: 0; } }
 
 /* ---- 提示条 ---- */
 #toast {

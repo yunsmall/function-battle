@@ -8,10 +8,14 @@
 </head>
 <body>
 <div id="toast" class="hidden"></div>
+<div id="screen-fade"></div>
 
 <header id="topbar">
     <div class="brand">函数对战 <span class="dim">· 网页版</span></div>
-    <div id="conn-status" class="conn off" data-i18n="status_connecting"></div>
+    <div class="top-right">
+        <button id="btn-theme" class="mini"></button>
+        <div id="conn-status" class="conn off" data-i18n="status_connecting"></div>
+    </div>
 </header>
 
 <main>
@@ -162,6 +166,7 @@
 <script src="js/sha256.js"></script>
 <script src="js/path.js"></script>
 <script src="js/net.js"></script>
+<script src="js/sfx.js"></script>
 <script src="js/render.js"></script>
 <script src="js/app.js"></script>
 </body>

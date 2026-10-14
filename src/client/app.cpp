@@ -11,6 +11,7 @@
 #include "ai.h"
 #include "curve.h"
 #include "render.h"
+#include "sfx.h"
 #include "ui_style.h"
 
 namespace fg {
@@ -41,6 +42,7 @@ double parse_angle_deg(const std::string& s) {
     if (end == begin || *end != '\0' || !std::isfinite(v)) return 0.0;
     return std::clamp(v, -85.0, 85.0);
 }
+
 }  // namespace
 
 // ---------------- 主循环 ----------------
@@ -48,6 +50,8 @@ double parse_angle_deg(const std::string& s) {
 int App::run() {
     InitWindow(kWinW, kWinH, "函数对战 Function Battle");
     SetTargetFPS(60);
+    InitAudioDevice();  // 合成音效需要音频设备；--selftest/--screenshot 不走这里，保持静默
+    sfx_init();
     load_ui_font();
     while (!WindowShouldClose() && !quit_) {
         // 与服务器一致地钳制帧间隔：拖动/最小化窗口或系统挂起后 GetFrameTime()
@@ -59,6 +63,8 @@ int App::run() {
         draw();
         EndDrawing();
     }
+    sfx_shutdown();
+    CloseAudioDevice();
     CloseWindow();
     return 0;
 }
@@ -111,6 +117,14 @@ void App::update() {
         battle_.projectile_travel += (target - battle_.projectile_travel) * k;
         battle_.projectile = battle_.projectile_path.at(battle_.projectile_travel);
     }
+    // 动画状态推进（纯表现）：特效老化、震屏衰减、界面切换过渡
+    fx_.update(frame_dt_);
+    shake_ = std::max(0.0f, shake_ - frame_dt_ * 46.0f);
+    if (screen_ != prev_screen_) {
+        prev_screen_ = screen_;
+        screen_fade_ = screenshot_mode_ ? 1.0f : 0.0f;
+    }
+    if (screen_fade_ < 1.0f) screen_fade_ = std::min(1.0f, screen_fade_ + frame_dt_ / 0.16f);
     // 本帧新登记的字形在这里统一重建一次：紧随其后的 draw() 里名字不会缺字
     flush_glyph_reload();
 }
@@ -125,6 +139,10 @@ void App::draw() {
         case Screen::Lobby: draw_lobby(); break;
         case Screen::CreateRoom: draw_create_room(); break;
         case Screen::Battle: draw_battle(); break;
+    }
+    // 界面切换过渡：切换后 0.16 秒黑色快速淡出（纯表现）
+    if (screen_fade_ < 1.0f) {
+        DrawRectangle(0, 0, kWinW, kWinH, Fade(Color{8, 10, 16, 255}, 1.0f - screen_fade_));
     }
     // 点击落在按钮/输入框之外（如战场空白）→ 取消全部输入焦点，
     // 免得玩家点完地图后按键还继续打进表达式框。
@@ -297,6 +315,7 @@ void App::handle_server_message(const json& m) {
         battle_.input_left = json_double(m, "input_seconds", 120.0);
         battle_.turn_start_left = battle_.input_left;
         battle_.turn_begin_time = GetTime();
+        if (battle_.current_player == battle_.my_id && battle_.winner < 0) sfx_turn();
         // 以服务器权威回合号为准（中途观战者据此对齐）；无该字段的旧实现按自增兜底
         const int r = json_int(m, "round", 0);
         battle_.round = (r > 0) ? r : (battle_.round + 1);
@@ -334,6 +353,7 @@ void App::handle_server_message(const json& m) {
         }
         battle_.has_projectile = false;
         battle_.has_path = false;
+        sfx_shot();
         if (req) {
             // "最近用过的函数"（右侧面板每人一行小字）：只存表达式本身，超长截断。
             // 截断回退到 UTF-8 字符边界：客户端连的服务器不保证是本家的，
@@ -396,26 +416,41 @@ void App::handle_server_message(const json& m) {
         const int hp_left = json_int(m, "hp_left", 0);
         // 与 kDeath/kCrater 同风格：直接改联机数据存储（battle_.players 是它的只读视图，
         // 拿它做守卫却遍历另一个容器，容易在不相关容器上操作）
+        Color team_color = kUnitA;  // 特效配色：受击方队伍色
         for (auto& p : battle_.online_players) {
             if (p.id == target && target_soldier >= 0 &&
                 target_soldier < static_cast<int>(p.soldiers.size())) {
                 p.soldiers[static_cast<size_t>(target_soldier)].hp = hp_left;
+                team_color = (p.team == Team::A) ? kUnitA : kUnitB;
             }
         }
+        if (m.contains("pos")) {
+            fx_.spawn_hit(vec2_from_json(m["pos"]), team_color);
+            shake_ = std::max(shake_, 3.5f);
+        }
+        sfx_hit();
     } else if (type == msg_type::kDeath) {
         const int target = json_int(m, "player_id", -1);
         const int target_soldier = json_int(m, "soldier", 0);
         for (auto& p : battle_.online_players) {
             if (p.id == target && target_soldier >= 0 &&
                 target_soldier < static_cast<int>(p.soldiers.size())) {
+                // 特效取阵亡士兵的位置（在置 alive=false 之前取）
+                fx_.spawn_death(p.soldiers[static_cast<size_t>(target_soldier)].pos,
+                                (p.team == Team::A) ? kUnitA : kUnitB);
                 p.soldiers[static_cast<size_t>(target_soldier)].alive = false;
+                shake_ = std::max(shake_, 7.0f);
+                sfx_death();
             }
         }
     } else if (type == msg_type::kCrater) {
         const int ob = json_int(m, "obstacle", -1);
         if (ob >= 0 && ob < static_cast<int>(battle_.online_obstacles.size()) && m.contains("pos")) {
-            battle_.online_obstacles[static_cast<size_t>(ob)].craters.push_back(
-                vec2_from_json(m["pos"]));
+            const Vec2 crater_pos = vec2_from_json(m["pos"]);
+            battle_.online_obstacles[static_cast<size_t>(ob)].craters.push_back(crater_pos);
+            fx_.spawn_explosion(crater_pos);
+            shake_ = std::max(shake_, 4.5f);
+            sfx_explode();
         }
     } else if (type == msg_type::kFunctionPreview) {
         const int from = json_int(m, "member_id", -1);

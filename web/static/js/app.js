@@ -54,6 +54,7 @@
         leavingSpectate: false, // 观战者"离开房间"已发出、等回应（对齐 C++ 的 leaving_spectate，防连点）
         restartSent: false,     // "再来一局"已发出 start、等待服务器开局（防连点）
         createOpts: { soldiers: 3, obstacles: 15, firstTeam: -1, coord: 'soldier' },
+        shake: 0,               // 屏幕震动强度（像素，纯表现；对齐 C++ 的 shake_）
     };
 
     function esc(s) {
@@ -130,6 +131,19 @@
     }
 
     // ---------- 界面切换 ----------
+    // 配色主题：三套预设（与 C++ 客户端的主题同名同性格）。
+    // body[data-theme] 驱动 CSS 变量，render.js 的 setTheme 换 canvas 调色板；
+    // localStorage 记住选择（隐私模式下写失败只是不持久化，不影响本次切换）
+    var THEMES = ['dark', 'bright', 'terminal'];
+    function applyTheme(name) {
+        if (THEMES.indexOf(name) < 0) name = THEMES[0];
+        document.body.dataset.theme = name;
+        renderer.setTheme(name);  // canvas 调色板（renderer 实例由 init 先建）
+        $('btn-theme').textContent = t('theme_' + name);
+        $('btn-theme').title = t('theme_btn_title');
+        try { localStorage.setItem('fg_theme', name); } catch (e) { /* 忽略：仅失去持久化 */ }
+    }
+
     function showScreen(name) {
         S.screen = name;
         ['menu', 'room', 'battle'].forEach(function (s) {
@@ -138,6 +152,12 @@
         // 帮助面板只属于对局屏（C++ 的 help_modal_active 也只在 Battle 屏为真）：切屏即收起，
         // 否则断线/被踢后它残留在主菜单上挡住界面
         $('help-overlay').classList.add('hidden');
+        // 界面切换黑场过渡（对齐 C++ 的 screen_fade_：0.16 秒黑到透明）。
+        // 移除后再强制 reflow，动画才会从头播（直接重复 add 不重新触发）
+        var fade = $('screen-fade');
+        fade.classList.remove('play');
+        void fade.offsetWidth;
+        fade.classList.add('play');
     }
 
     function applyStaticI18n() {
@@ -474,7 +494,8 @@
             projStopped: false, // 服务器 travel 不再增长=炮弹已停（销毁），本地停止推进
             projMsgAt: 0,     // 最近一次收到炮弹广播的时刻（收不到广播也要停推进）
             frameAt: 0,       // 上一渲染帧时刻（弹头推进的 dt 基准）
-            flashes: [],      // 命中/阵亡/炸坑的扩散圈（纯视觉反馈，网页版自己的发挥）
+            fx: [],           // 战斗特效条目（环/粒子，纯视觉；spawn_* 生成、render.js 的 drawFx 现算现画）
+            banner: null,     // 回合横幅（turn_begin 时置位，显示 1.6 秒）
             lastFunc: {},     // 各玩家"最近用过的函数"文本（shot 时记录，新开局清空）
             preview: null,   // 服务器代算的输入预览（curve_preview 返回的轨迹）
             previewAt: 0,    // 上次请求预览的时刻（客户端节流，与服务端 1 秒限频对齐）
@@ -490,6 +511,7 @@
         // "退出观战已发出"的防连点标志同样复位（C++ 在 kGameStart 里清 leaving_spectate）
         S.spectateMirror = false;
         S.leavingSpectate = false;
+        S.shake = 0;  // 新对局复位震屏（对齐 C++ 换局后的干净开场）
         // 预览广播状态归零（对齐 C++ 的 kGameStart）：否则上一局末尾的发送时刻/文本
         // 会拦掉新局第一条"正在写"
         S.lastPreviewAt = 0;
@@ -592,9 +614,18 @@
         // 只在 mine 分支清会残留到对手回合，按钮一直显示"已提交，等待飞行…"
         S.submitted = false;
         var mine = (m.player_id === S.myId);
+        // 回合横幅（canvas 中央浮层）：只在回合切换瞬间弹出 1.6 秒，与顶部常驻信息互补
+        var bp = playerById(m.player_id);
+        b.banner = {
+            text: mine ? t('banner_your_turn', { s: m.soldier })
+                       : t('banner_turn', { name: bp ? bp.name : '#' + m.player_id, s: m.soldier }),
+            t0: performance.now() / 1000,
+            gold: mine,
+        };
         if (mine) {
             S.tooMany = false;
             S.attempts = 0;
+            FGSfx.turn();  // 轮到我：轻提示音（与 C++ 的 sfx_turn 同款）
             $('turn-banner').innerHTML = t('banner_your_turn', { s: m.soldier });
             var a = $('expr-a');
             if (a) a.focus();
@@ -609,27 +640,82 @@
         updateInputState();
     }
 
+    // ---------- 战斗特效（对齐 C++ 客户端 fx.cpp 的 spawn_*：环 + 粒子，纯表现层）----------
+    // 时间用 performance.now()/1000（秒），与 scene.time 同源；每条自带寿命，
+    // render.js 的 drawFx 按"当前时间 - t0"现算现画（不需要每帧更新数组）
+    var TEAM_COL = { A: [70, 140, 255, 255], B: [255, 90, 90, 255] };
+    function randf(a, b) { return a + Math.random() * (b - a); }
+    function teamColor(p) { return (p && p.team === 'B') ? TEAM_COL.B : TEAM_COL.A; }
+
+    function ring(pos, life, r0, r1, width, color) {
+        S.battle.fx.push({ kind: 'ring', pos: pos, t0: performance.now() / 1000,
+                           life: life, r0: r0, r1: r1, width: width, color: color });
+    }
+    // 一颗碎屑/火花：速度方向随机；rotv 统一 ±10 rad/s（C++ 三种特效的 ±9/±10/±11 很接近，
+    // 表现层不为此分三套参数）
+    function part(pos, vLo, vHi, lifeLo, lifeHi, sizeLo, sizeHi, color) {
+        var a = randf(0, Math.PI * 2);
+        var v = randf(vLo, vHi);
+        S.battle.fx.push({
+            kind: 'part', pos: pos, t0: performance.now() / 1000,
+            life: randf(lifeLo, lifeHi), size: randf(sizeLo, sizeHi),
+            vel: [Math.cos(a) * v, Math.sin(a) * v],
+            rotv: randf(-10, 10), color: color,
+        });
+    }
+    function spawnHit(pos, tc) {
+        ring(pos, 0.30, 0.25, 2.4, 3.0, null);  // null = 主题高光色（浅色主题自动取深色）
+        ring(pos, 0.55, 0.2, 3.6, 1.8, [tc[0], tc[1], tc[2], 210]);
+        for (var i = 0; i < 8; i++) {
+            part(pos, 2.5, 7, 0.30, 0.55, 0.07, 0.15, 'spark');  // 主题火花色
+        }
+    }
+    function spawnExplosion(pos) {
+        ring(pos, 0.16, 0.1, 1.7, 6.0, null);  // 闪光同样跟随主题高光色
+        ring(pos, 0.45, 0.3, 3.4, 3.0, [255, 160, 70, 235]);
+        ring(pos, 0.8, 0.6, 4.8, 1.5, [198, 130, 80, 130]);
+        // 调色板随主题：火花/金用主题色键（浅色主题自动取深色一档），灰烬固定
+        var pal = ['spark', 'preview', [152, 142, 132, 255]];
+        for (var i = 0; i < 14; i++) {
+            part(pos, 2, 7.5, 0.45, 0.95, 0.10, 0.30, pal[Math.floor(Math.random() * 3)]);
+        }
+    }
+    function spawnDeath(pos, tc) {
+        ring(pos, 0.35, 0.2, 2.0, 2.5, [tc[0], tc[1], tc[2], 200]);
+        for (var i = 0; i < 10; i++) {
+            part(pos, 2, 5.5, 0.5, 1.0, 0.12, 0.28, (i % 2 === 0) ? tc : [112, 112, 122, 255]);
+        }
+    }
+
     function onHit(m) {
         var p = playerById(m.target);
         if (p && p.soldiers[m.soldier]) {
             p.soldiers[m.soldier].hp = num(m.hp_left, p.soldiers[m.soldier].hp);
         }
-        S.battle.flashes.push({ pos: m.pos, kind: 'hit', t0: performance.now() / 1000 });
+        // pos 缺失（异常数据）时只响音效与震屏，不在错误位置放特效
+        if (Array.isArray(m.pos)) spawnHit(m.pos, teamColor(p));
+        S.shake = Math.max(S.shake, 3.5);
+        FGSfx.hit();
         log(t('ev_hit', { name: nameHtml(m.target), s: m.soldier, hp: num(m.hp_left, 0) }));
     }
 
     function onDeath(m) {
         var p = playerById(m.player_id);
+        // 位置要在士兵身上取（alive=false 后 pos 仍在，但先取更清晰，与 C++ 的取值顺序一致）
+        var pos = p && p.soldiers[m.soldier] ? p.soldiers[m.soldier].pos : null;
         if (p && p.soldiers[m.soldier]) p.soldiers[m.soldier].alive = false;
-        var pos = p && p.soldiers[m.soldier] ? p.soldiers[m.soldier].pos : [0, 0];
-        S.battle.flashes.push({ pos: pos, kind: 'death', t0: performance.now() / 1000 });
+        if (pos) spawnDeath(pos, teamColor(p));
+        S.shake = Math.max(S.shake, 7);
+        FGSfx.death();
         log(t('ev_death', { name: nameHtml(m.player_id), s: m.soldier }));
     }
 
     function onCrater(m) {
         var o = S.battle.obstacles[m.obstacle];
         if (o) o.craters.push(m.pos);
-        S.battle.flashes.push({ pos: m.pos, kind: 'crater', t0: performance.now() / 1000 });
+        if (Array.isArray(m.pos)) spawnExplosion(m.pos);
+        S.shake = Math.max(S.shake, 4.5);
+        FGSfx.explode();
         log(t('ev_crater'));
     }
 
@@ -963,8 +1049,10 @@
             var rem = (b.turn.deadline - now) / 1000;
             $('countdown').textContent = rem > 0 ? t('remaining', { n: rem.toFixed(1) }) : t('waiting_move');
         }
-        if (b.flashes.length) {
-            b.flashes = b.flashes.filter(function (f) { return now / 1000 - f.t0 < 0.6; });
+        if (b.fx.length) {
+            // 过期即删（每条自带寿命）：长局不积累死条目
+            var tsec = now / 1000;
+            b.fx = b.fx.filter(function (f) { return tsec - f.t0 < f.life; });
         }
     }
 
@@ -980,6 +1068,8 @@
         // 停滞（projStopped）或超过 0.25s 收不到广播（炮弹已销毁）即停止推进
         var dt = b.frameAt ? Math.min((now - b.frameAt) / 1000, 0.1) : 0;
         b.frameAt = now;
+        // 震屏衰减：46/s（与 C++ 的衰减速率一致：强度 7 约 0.15 秒归零）
+        S.shake = Math.max(0, S.shake - dt * 46);
         if (b.shot && b.projectile && b.projectileS > 0 && !b.projStopped &&
             now - b.projMsgAt < 250) {
             var target = b.projNetTravel + num(b.shot.speed, 0) * ((now - b.projMsgAt) / 1000);
@@ -1001,7 +1091,9 @@
             projectilePath: b.shot ? b.shot.path : null,
             projectile: b.projectile,
             projectileS: b.projectileS,
-            flashes: b.flashes,
+            fx: b.fx,
+            shake: S.shake,
+            banner: b.banner,
             mirror: b.viewMirror,
             time: now / 1000,
         });
@@ -1138,6 +1230,7 @@
         net.on('shot', function (m) {
             if (!S.battle) return;
             addShot(m);
+            FGSfx.shot();  // 发射"咻"
             log(t('ev_shot', { name: nameHtml(m.owner) }));
         });
 
@@ -1218,6 +1311,10 @@
 
     // ---------- 事件绑定 ----------
     function bindEvents() {
+        $('btn-theme').addEventListener('click', function () {
+            var i = THEMES.indexOf(document.body.dataset.theme || 'dark');
+            applyTheme(THEMES[(i + 1) % THEMES.length]);  // 循环切换
+        });
         $('btn-create').addEventListener('click', doCreate);
         // click 事件对象会被当参数传进来，用闭包包一层固定传参（否则 event 是 truthy）
         $('btn-join').addEventListener('click', function () { doJoin(false); });
@@ -1324,6 +1421,9 @@
         bindEvents();
         wireNet();
         renderer = FGRender.create($('battle-canvas'));
+        var saved = null;
+        try { saved = localStorage.getItem('fg_theme'); } catch (e) { /* 隐私模式：用默认 */ }
+        applyTheme(saved || 'dark');
         requestAnimationFrame(frame);
         $('conn-status').textContent = t('status_connecting');
         net.connect();
