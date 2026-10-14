@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>函数对战 · 网页版</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="toast" class="hidden"></div>
+
+<header id="topbar">
+    <div class="brand">函数对战 <span class="dim">· 网页版</span></div>
+    <div id="conn-status" class="conn off" data-i18n="status_connecting"></div>
+</header>
+
+<main>
+    <!-- 主菜单：建房 / 加房 -->
+    <section id="screen-menu" class="screen">
+        <div class="card">
+            <h2 data-i18n="create_room"></h2>
+            <label class="row-label"><span data-i18n="your_name"></span>
+                <input id="menu-name" maxlength="24" data-i18n-ph="name_ph" autocomplete="off">
+            </label>
+            <div class="opt-group">
+                <div class="opt-label" data-i18n="cfg_soldiers"></div>
+                <div class="opt-row" id="opt-soldiers"></div>
+                <span id="soldier-hint" class="dim" data-i18n="soldier_locked_short"></span>
+            </div>
+            <div class="opt-group">
+                <div class="opt-label" data-i18n="cfg_coord"></div>
+                <div class="opt-row" id="opt-coord"></div>
+                <span id="coord-hint" class="dim" data-i18n="coord_note_soldier"></span>
+            </div>
+            <div class="opt-group">
+                <div class="opt-label" data-i18n="cfg_obstacles"></div>
+                <div class="opt-row" id="opt-obstacles"></div>
+            </div>
+            <div class="opt-group">
+                <div class="opt-label" data-i18n="first_team_label"></div>
+                <div class="opt-row" id="opt-first-team"></div>
+            </div>
+            <label class="row-label"><span data-i18n="cfg_seed"></span>
+                <input id="menu-seed" data-i18n-ph="seed_ph" inputmode="numeric" autocomplete="off">
+            </label>
+            <label class="row-label"><span data-i18n="cfg_password"></span>
+                <input id="menu-password" type="password" maxlength="64" data-i18n-ph="password_ph" autocomplete="off">
+            </label>
+            <button id="btn-create" class="primary big" data-i18n="create_room"></button>
+            <div class="join-row">
+                <input id="join-id" data-i18n-ph="join_ph" inputmode="numeric" autocomplete="off">
+                <input id="join-password" type="password" maxlength="64" data-i18n-ph="join_password_ph" autocomplete="off">
+                <button id="btn-join" data-i18n="join"></button>
+                <button id="btn-join-spec" data-i18n="spectate_join"></button>
+                <button id="btn-refresh" data-i18n="refresh"></button>
+            </div>
+            <details id="room-browser">
+                <summary data-i18n="room_list_title"></summary>
+                <div id="room-list"></div>
+            </details>
+        </div>
+    </section>
+
+    <!-- 房间：成员与开局 -->
+    <section id="screen-room" class="screen hidden">
+        <div class="card wide">
+            <h2 id="room-title"></h2>
+            <div class="room-cols">
+                <div><h3 class="team-a" data-i18n="team_a"></h3><ul id="team-a"></ul></div>
+                <div><h3 class="team-b" data-i18n="team_b"></h3><ul id="team-b"></ul></div>
+                <div><h3 class="dim" data-i18n="team_spectators"></h3><ul id="team-s"></ul></div>
+            </div>
+            <div id="room-cfg" class="dim"></div>
+            <div class="row" id="host-tools">
+                <select id="ai-diff">
+                    <option value="0" data-i18n="diff_0"></option>
+                    <option value="1" data-i18n="diff_1"></option>
+                    <option value="2" data-i18n="diff_2" selected></option>
+                    <option value="3" data-i18n="diff_3"></option>
+                </select>
+                <select id="ai-team">
+                    <option value="B" data-i18n="team_b" selected></option>
+                    <option value="A" data-i18n="team_a"></option>
+                    <option value="auto" data-i18n="team_auto"></option>
+                </select>
+                <button id="btn-add-ai" data-i18n="add_ai"></button>
+            </div>
+            <div id="room-rules" class="hidden"></div>
+            <div class="row">
+                <button id="btn-start" class="primary" data-i18n="start_game"></button>
+                <button id="btn-leave" data-i18n="leave_room"></button>
+            </div>
+            <div id="room-hint" class="dim"></div>
+        </div>
+    </section>
+
+    <!-- 对战 -->
+    <section id="screen-battle" class="screen hidden">
+        <div class="battle-grid">
+            <div id="battle-top">
+                <span id="round-n" class="dim mono"></span>
+                <span id="turn-banner"></span>
+                <span id="countdown" class="mono gold"></span>
+                <span id="attempts" class="dim"></span>
+                <span id="typing" class="dim"></span>
+                <span class="spacer"></span>
+                <button id="btn-view" class="hidden"></button>
+                <button id="btn-help" data-i18n="help_btn"></button>
+                <button id="btn-vote"></button>
+                <button id="btn-leave-battle" data-i18n="leave_room"></button>
+            </div>
+            <div id="canvas-wrap">
+                <canvas id="battle-canvas"></canvas>
+                <div id="over-overlay" class="hidden">
+                    <div id="over-text"></div>
+                    <div class="row center">
+                        <button id="btn-again" class="primary" data-i18n="again"></button>
+                        <button id="btn-to-room" data-i18n="to_room"></button>
+                    </div>
+                </div>
+            </div>
+            <aside id="sidebar">
+                <h3 data-i18n="events_title"></h3>
+                <div id="event-log"></div>
+            </aside>
+            <div id="input-bar">
+                <div id="mode-tabs"></div>
+                <div id="input-fields">
+                    <label class="field" id="field-a"><span id="label-a"></span>
+                        <input id="expr-a" class="mono" maxlength="160" spellcheck="false" autocomplete="off"></label>
+                    <label class="field hidden" id="field-b"><span id="label-b"></span>
+                        <input id="expr-b" class="mono" maxlength="160" spellcheck="false" autocomplete="off"></label>
+                    <label class="field hidden" id="field-range"><span data-i18n="range_label"></span>
+                        <input id="p-start" class="mono small" data-i18n-ph="range_ph_lo" inputmode="decimal">
+                        <span class="dim">—</span>
+                        <input id="p-end" class="mono small" data-i18n-ph="range_ph_hi" inputmode="decimal"></label>
+                    <label class="field hidden" id="field-angle"><span data-i18n="angle_label"></span>
+                        <input id="angle" class="mono small" placeholder="0" inputmode="decimal"></label>
+                    <span id="dir-buttons"></span>
+                    <button id="btn-preview" data-i18n="preview"></button>
+                    <button id="btn-submit" class="primary"></button>
+                </div>
+                <div id="hint" class="dim"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- 函数帮助（模态）：内容与规则和 C++ 客户端一致，见 app.js 的 HELP_GROUPS / HELP_RULES -->
+<div id="help-overlay" class="hidden">
+    <div class="help-card">
+        <div class="help-head">
+            <span class="help-title" data-i18n="help_btn"></span>
+            <span class="help-sub dim" data-i18n="help_sub"></span>
+            <button id="btn-help-close" data-i18n="help_close"></button>
+        </div>
+        <div id="help-body"></div>
+    </div>
+</div>
+
+<script src="js/strings.js"></script>
+<script src="js/sha256.js"></script>
+<script src="js/path.js"></script>
+<script src="js/net.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# 构建产物
+build/
+
+# 第三方原始压缩包（解压目录已在 third_party/ 里）
+third_party/*.zip
+
+# 本地开发中间产物：验尸/验证脚本、截图、临时数据
+tmp/
+
+# 代码审查报告（开发过程材料，不进库）
+review/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 对局信箱运行时文件（fg_play.py 自己生成）
+scripts/session/
+
+# 编辑器与系统杂项
+.vs/
+.idea/
+.vscode/
+*.user
+Thumbs.db
+desktop.ini

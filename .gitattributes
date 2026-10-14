@@ -1,0 +1,6 @@
+# 仓库内统一 LF（Windows 检出时也保持，避免 CRLF 噪音）
+* text=auto eol=lf
+# 第三方文件保持原样
+third_party/** -text
+*.zip binary
+*.png binary

@@ -1,0 +1,231 @@
+/* 网页版主题：与 C++ 客户端同一套深色配色（src/client/ui_style.h） */
+:root {
+    --bg-top: #0c0f17;
+    --bg-bottom: #151a28;
+    --panel: #191e2d;
+    --panel-soft: #1f2537;
+    --border: #323a52;
+    --accent: #4ea8ff;
+    --team-a: #4ea8ff;
+    --team-b: #ff6b6b;
+    --text: #e4e9f5;
+    --dim: #8a94ac;
+    --faint: #60687c;
+    --gold: #ffd65c;
+    --danger: #ff5252;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    background: linear-gradient(var(--bg-top), var(--bg-bottom));
+    color: var(--text);
+    font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.hidden { display: none !important; }
+.dim { color: var(--dim); }
+.gold { color: var(--gold); }
+.danger { color: var(--danger); }
+.team-a { color: var(--team-a); }
+.team-b { color: var(--team-b); }
+.mono { font-family: ui-monospace, Consolas, "Courier New", monospace; }
+
+/* ---- 顶栏 ---- */
+#topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+}
+.brand { font-size: 17px; font-weight: 600; letter-spacing: 1px; }
+.conn { font-size: 13px; color: var(--dim); }
+.conn::before { content: "● "; color: #5bd98b; }
+.conn.off::before { color: var(--danger); }
+
+main { flex: 1; min-height: 0; display: flex; }
+.screen { flex: 1; min-height: 0; padding: 18px; overflow: auto; }
+
+/* ---- 通用控件 ---- */
+button {
+    background: var(--panel-soft);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.active { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+button.big { width: 100%; padding: 11px; font-size: 15px; margin-top: 14px; }
+button.mini { font-size: 11px; padding: 2px 8px; }
+button.mini.danger { color: var(--danger); border-color: #5a2f36; }
+
+input, select {
+    background: #0e1220;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font: inherit;
+    font-size: 13px;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+input.small { width: 84px; }
+
+select option { background: #141927; }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row.center { justify-content: center; }
+
+/* ---- 卡片 ---- */
+.card {
+    max-width: 560px;
+    margin: 10px auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 26px 26px;
+}
+.card.wide { max-width: 860px; }
+.card h2 { margin: 0 0 14px; font-size: 20px; }
+.row-label { display: flex; align-items: center; gap: 10px; margin: 10px 0; justify-content: space-between; }
+.row-label span { color: var(--dim); flex: none; }
+.row-label input { flex: 1; }
+
+.opt-group { margin: 12px 0; }
+.opt-label { color: var(--dim); margin-bottom: 6px; }
+.opt-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.opt-row button { min-width: 46px; }
+#soldier-hint, #coord-hint { font-size: 12px; margin-left: 8px; }
+
+.join-row { display: flex; gap: 8px; margin-top: 18px; }
+.join-row input { flex: 1; min-width: 0; }
+
+#room-browser { margin-top: 16px; }
+#room-browser summary { color: var(--dim); cursor: pointer; }
+#room-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.room-item { text-align: left; display: flex; align-items: center; gap: 8px; }
+.room-item > span:first-child { flex: 1; }
+
+/* ---- 房间 ---- */
+.room-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 10px 0; }
+.room-cols h3 { margin: 0 0 4px; font-size: 15px; }
+.room-cols ul { list-style: none; margin: 0; padding: 0; }
+.room-cols li {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 5px 8px; margin-bottom: 4px;
+    background: #141927; border-radius: 7px; font-size: 13px;
+}
+.member-name { flex: 1; min-width: 0; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: #2a3148; color: var(--dim); white-space: nowrap; }
+.tag.host { background: #4a3d16; color: var(--gold); }
+.tag.you { background: #16324d; color: var(--accent); }
+.tag.ai { background: #33253a; }
+#room-cfg { font-size: 12px; margin: 6px 0 14px; }
+#room-hint { margin-top: 12px; font-size: 13px; }
+
+/* ---- 对战 ---- */
+.battle-grid {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: "top top" "canvas side" "input side";
+    gap: 10px;
+}
+#battle-top { grid-area: top; display: flex; align-items: center; gap: 14px; min-height: 34px; }
+#turn-banner { font-size: 16px; font-weight: 600; }
+#countdown { font-size: 16px; }
+#attempts { font-size: 12px; }
+#typing { font-size: 12px; color: var(--gold); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { flex: 1; }
+
+#canvas-wrap { grid-area: canvas; position: relative; min-height: 0; }
+#battle-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 10px; }
+
+#sidebar {
+    grid-area: side;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#sidebar h3 { margin: 0 0 6px; font-size: 13px; color: var(--dim); font-weight: 500; }
+#event-log { flex: 1; overflow-y: auto; font-size: 12.5px; }
+#event-log .entry { padding: 2px 0; border-bottom: 1px dotted #232a3d; }
+
+#input-bar { grid-area: input; display: flex; flex-direction: column; gap: 8px; }
+#mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+#mode-tabs button { padding: 5px 10px; font-size: 12px; }
+#input-fields { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.field { display: flex; align-items: center; gap: 6px; }
+.field span { color: var(--dim); font-size: 13px; white-space: nowrap; }
+.field input { min-width: 260px; }
+.field input.small { min-width: 0; width: 84px; }
+#dir-buttons { display: flex; gap: 6px; }
+#hint { font-size: 12px; }
+
+#over-overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: rgba(8, 10, 16, 0.75);
+    border-radius: 10px;
+}
+#over-text { font-size: 30px; font-weight: 700; color: var(--gold); }
+
+/* ---- 提示条 ---- */
+#toast {
+    position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+    background: #2a1a20; border: 1px solid #5a2f36; color: #ffb4b4;
+    padding: 9px 18px; border-radius: 9px; z-index: 50; font-size: 13px;
+    max-width: 70vw;
+}
+
+/* ---- 房间规则（房主可改，选项与 C++ 客户端的房间面板一致） ---- */
+#room-rules { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 10px; }
+#room-rules h3 { margin: 0 0 4px; font-size: 13px; font-weight: 500; }
+#room-rules input { width: 130px; }
+
+/* ---- 函数帮助（模态；内容与 C++ 客户端的帮助面板一致） ---- */
+#help-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 10, 16, 0.8);
+}
+.help-card {
+    width: min(880px, 94vw); max-height: 86vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 18px 26px 22px;
+}
+.help-head {
+    display: flex; align-items: baseline; gap: 12px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+}
+.help-title { font-size: 22px; font-weight: 700; }
+.help-sub { font-size: 14px; }
+.help-head button { margin-left: auto; }
+.help-row {
+    display: grid; grid-template-columns: 92px minmax(0, auto) minmax(0, 1fr);
+    gap: 10px; padding: 4px 0; font-size: 14px; align-items: baseline;
+}
+.help-key { color: var(--accent); white-space: nowrap; }
+.help-main { color: var(--text); }
+.help-note { color: var(--dim); font-size: 13px; }
+.help-sep { border-top: 1px solid var(--border); margin: 8px 0; }
