@@ -1,5 +1,6 @@
 # Function Battle
 
+[![ci](https://github.com/yunsmall/function_game/actions/workflows/ci.yml/badge.svg)](https://github.com/yunsmall/function_game/actions/workflows/ci.yml)
 **中文**: [README.md](README.md)
 
 A turn-based mathematical shooter on the Cartesian plane: two teams alternate turns entering
