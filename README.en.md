@@ -79,11 +79,11 @@ fg_server (single process; both ports share one room table)
 
 ## Building
 
-vcpkg dependencies: Eigen3, nlohmann-json, asio, cxxopts, exprtk (header-only), gtest.
-raylib and websocketpp are pinned to the versions under `third_party/`: raylib to the
-official prebuilt package (vcpkg's 6.0 shows a rendering regression on this machine),
-websocketpp to the 0.8.2 sources (standalone asio, consistent with the project). Example
-(clang + Ninja + vcpkg):
+vcpkg dependencies: Eigen3, nlohmann-json, asio, cxxopts, gtest.
+raylib, websocketpp and exprtk are pinned to the versions under `third_party/`: raylib to
+the official prebuilt package (vcpkg's 6.0 shows a rendering regression on this machine),
+websocketpp to the 0.8.2 sources (standalone asio, consistent with the project), exprtk to
+a single header (MIT). Example (clang + Ninja + vcpkg):
 
 ```bash
 cmake -B build -GNinja \
@@ -177,8 +177,5 @@ This project is open-sourced under the **GPL-3.0** (full text in [LICENSE](LICEN
 
 Third-party dependency licenses: Eigen3 (MPL-2.0), nlohmann-json (MIT), asio (Boost Software
 License), cxxopts (MIT), websocketpp (BSD-3-Clause), gtest (BSD-3-Clause), raylib 5.5 (zlib;
-prebuilt package under `third_party/`).
-
-⚠ **exprtk (the expression parser) uses its own license: free for non-commercial use;
-commercial use requires purchasing a license from its author.** Handle this dependency
-(buy a license or swap the parser) before using this project commercially.
+prebuilt package under `third_party/`), exprtk (MIT, stated in its header; older versions of
+exprtk were non-commercial — this repository pins the MIT one).

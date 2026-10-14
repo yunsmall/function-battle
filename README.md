@@ -63,10 +63,10 @@ fg_server（单进程，双端口共享同一个房间表）
 
 ## 构建
 
-vcpkg 依赖：Eigen3、nlohmann-json、asio、cxxopts、exprtk（header-only）、gtest。
-raylib 与 websocketpp 固定用仓库内 `third_party/` 的版本：raylib 是官方预编译包
-（vcpkg 的 6.0 在本机有呈现回归），websocketpp 是 0.8.2 源码（与项目统一用
-standalone asio）。以本机为例（clang + Ninja + vcpkg 工具链）：
+vcpkg 依赖：Eigen3、nlohmann-json、asio、cxxopts、gtest。
+raylib、websocketpp 与 exprtk 固定用仓库内 `third_party/` 的版本：raylib 是官方
+预编译包（vcpkg 的 6.0 在本机有呈现回归），websocketpp 是 0.8.2 源码（与项目统一用
+standalone asio），exprtk 是单头文件（MIT）。以本机为例（clang + Ninja + vcpkg 工具链）：
 
 ```bash
 cmake -B build -GNinja \
@@ -152,7 +152,5 @@ scripts/      fg_play.py：文件信箱式的对局客户端（往文件里写�
 
 第三方依赖的许可：Eigen3（MPL-2.0）、nlohmann-json（MIT）、asio（Boost Software
 License）、cxxopts（MIT）、websocketpp（BSD-3-Clause）、gtest（BSD-3-Clause）、
-raylib 5.5（zlib，仓库内 `third_party/` 预编译包）。
-
-⚠ **exprtk（表达式解析库）是其自有许可：非商业用途免费，商业用途需向作者购买授权。**
-将本项目用于商业用途前，请先处理该依赖（购买授权或替换解析库）。
+raylib 5.5（zlib，仓库内 `third_party/` 预编译包）、exprtk（MIT，其头文件内注明；
+老版 exprtk 曾为非商业许可，本仓库锁定的是 MIT 版）。

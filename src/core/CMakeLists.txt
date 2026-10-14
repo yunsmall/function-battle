@@ -1,5 +1,10 @@
-# ExprTk 为 header-only 库，按 vcpkg 用法说明用 find_path 定位
-find_path(EXPRTK_INCLUDE_DIR "exprtk.hpp")
+# ExprTk（header-only）：优先仓库内 third_party 的锁定版本（跨平台一致、
+# 不依赖包管理器——它的 vcpkg port 在 Linux 上构建失败过）；找不到时回退系统安装
+find_path(EXPRTK_INCLUDE_DIR "exprtk.hpp"
+          PATHS ${CMAKE_SOURCE_DIR}/third_party/exprtk NO_DEFAULT_PATH)
+if(NOT EXPRTK_INCLUDE_DIR)
+    find_path(EXPRTK_INCLUDE_DIR "exprtk.hpp")
+endif()
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 

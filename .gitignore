@@ -1,5 +1,5 @@
-# 构建产物
-build/
+# 构建产物（build/、build-linux/ 等）
+build*/
 
 # 第三方原始压缩包（解压目录已在 third_party/ 里）
 third_party/*.zip
