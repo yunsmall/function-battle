@@ -12,12 +12,12 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            generator: Ninja
+            gen: -GNinja
             client: -DFG_BUILD_CLIENT=OFF    # Linux 无图形客户端（raylib 预编译包仅 Windows）
             cfg_dir: ""
             ext: ""
           - os: windows-latest
-            generator: "Visual Studio 17 2022"
+            gen: ""              # 不指定生成器：CMake 自动选最新 VS（写死版本会随 runner 镜像更新失配）
             client: ""
             cfg_dir: /RelWithDebInfo
             ext: .exe
@@ -41,7 +41,7 @@ jobs:
       - name: 配置
         shell: bash
         run: >
-          cmake -B build -G "${{ matrix.generator }}" ${{ matrix.client }}
+          cmake -B build ${{ matrix.gen }} ${{ matrix.client }}
           -DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake
 
       - name: 构建
