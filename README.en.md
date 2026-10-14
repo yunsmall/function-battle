@@ -79,9 +79,11 @@ fg_server (single process; both ports share one room table)
 
 ## Building
 
-vcpkg dependencies: Eigen3, nlohmann-json, asio, cxxopts, exprtk (header-only), websocketpp,
-gtest. raylib is pinned to the official prebuilt package in `third_party/raylib-5.5/`
-(vcpkg's 6.0 shows a rendering regression on this machine). Example (clang + Ninja + vcpkg):
+vcpkg dependencies: Eigen3, nlohmann-json, asio, cxxopts, exprtk (header-only), gtest.
+raylib and websocketpp are pinned to the versions under `third_party/`: raylib to the
+official prebuilt package (vcpkg's 6.0 shows a rendering regression on this machine),
+websocketpp to the 0.8.2 sources (standalone asio, consistent with the project). Example
+(clang + Ninja + vcpkg):
 
 ```bash
 cmake -B build -GNinja \

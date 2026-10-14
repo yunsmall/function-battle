@@ -63,9 +63,10 @@ fg_server（单进程，双端口共享同一个房间表）
 
 ## 构建
 
-vcpkg 依赖：Eigen3、nlohmann-json、asio、cxxopts、exprtk（header-only）、websocketpp、
-gtest。raylib 固定用仓库内 `third_party/raylib-5.5/` 的官方预编译包（vcpkg 的 6.0
-在本机有呈现回归）。以本机为例（clang + Ninja + vcpkg 工具链）：
+vcpkg 依赖：Eigen3、nlohmann-json、asio、cxxopts、exprtk（header-only）、gtest。
+raylib 与 websocketpp 固定用仓库内 `third_party/` 的版本：raylib 是官方预编译包
+（vcpkg 的 6.0 在本机有呈现回归），websocketpp 是 0.8.2 源码（与项目统一用
+standalone asio）。以本机为例（clang + Ninja + vcpkg 工具链）：
 
 ```bash
 cmake -B build -GNinja \
