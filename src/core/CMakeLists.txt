@@ -1,9 +1,4 @@
-# ExprTk（header-only）——vcpkg 给出的用法就是 find_path 定位头文件（走 vcpkg，
-# 与其他依赖一致）
 find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
-if(NOT EXPRTK_INCLUDE_DIRS)
-    message(FATAL_ERROR "未找到 exprtk.hpp——请先安装依赖：vcpkg install exprtk")
-endif()
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
