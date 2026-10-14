@@ -13,6 +13,12 @@
 #include "render.h"
 #include "ui_style.h"
 
+// 版本号由 CMake 从顶层 project(VERSION) 注入（发布时只改一处）；
+// 无定义时兜底，保证 IDE 单独解析等场景也能编译
+#ifndef FG_VERSION
+#define FG_VERSION "dev"
+#endif
+
 namespace fg {
 
 // ---------------- 主菜单 ----------------
@@ -68,8 +74,8 @@ void App::draw_menu() {
         quit_ = true;  // 交给主循环退出，让析构正常清理（网络连接等）
     }
 
-    // 版本脚注
-    text("v0.1 · C++ / raylib", 16.0f, kWinH - 30.0f, 15.0f, kTextFaint);
+    // 版本脚注（版本号来自 CMake 的 project(VERSION)，与发布包一致）
+    text("v" FG_VERSION " · C++ / raylib", 16.0f, kWinH - 30.0f, 15.0f, kTextFaint);
 }
 
 // ---------------- 单机配置 ----------------

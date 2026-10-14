@@ -17,6 +17,9 @@ target_include_directories(fg_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # 发布布局：exe 与 web/ 同层（配合顶层 CMakeLists 的打包规则）
 install(TARGETS fg_client RUNTIME DESTINATION .)
 
+# 版本号单一来源：从顶层 project(VERSION) 注入，界面显示用（发布时只改一处）
+target_compile_definitions(fg_client PRIVATE FG_VERSION="${PROJECT_VERSION}")
+
 if(WIN32)
     # Windows 固定用 raylib 5.5 官方预编译包（动态库 + 导入库）：配置时从官方
     # release 自动下载并校验 SHA-256，不往仓库里放二进制。不用 vcpkg 的 6.0——

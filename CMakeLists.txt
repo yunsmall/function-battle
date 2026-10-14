@@ -10,8 +10,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # 源码注释为中文（UTF-8），MSVC 需要显式指定；clang/gcc 默认即 UTF-8
+# /bigobj：exprtk 这类巨型模板头会让 MSVC 单个目标文件的节数超过默认上限
+# （error C1128），放开限制（对其它编译单元无害）
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /bigobj)
 endif()
 
 add_subdirectory(src)
