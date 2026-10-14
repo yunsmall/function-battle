@@ -70,7 +70,7 @@ broadcasts it, and room lists show only a "has password" flag.
 ## Architecture
 
 ```
-fg_server (single process; both ports share one room table)
+fb_server (single process; both ports share one room table)
   9527  native protocol: length-prefixed JSON frames (C++ clients)
   8000  WebSocket text frames + static files (browser clients; same messages)
 ```
@@ -115,29 +115,29 @@ Windows-only): add `-DFG_BUILD_CLIENT=OFF` to build only the core, server and te
 
 ```bash
 cmake --install build --prefix dist   # installs a flat, ready-to-ship directory
-cd build && cpack -G ZIP              # or produce function_game-<version>-<system>.zip
+cd build && cpack -G ZIP              # or produce function_battle-<version>-<system>.zip
 ```
 
 The package is flat: the executables, raylib.dll, the MSVC runtime and the `web/`
 assets sit in one directory — the server locates its web files relative to the
 executable, so the unzipped package runs from anywhere.
 
-Outputs: `build/src/server/fg_server.exe`, `build/src/client/fg_client.exe`,
-`build/src/tests/fg_tests.exe`.
+Outputs: `build/src/server/fb_server.exe`, `build/src/client/fb_client.exe`,
+`build/src/tests/fb_tests.exe`.
 
 ## Running
 
 **From a release zip**: unzip and run inside the extracted directory — on Windows
-double-click `fg_client.exe` (local play) or `fg_server.exe` (host; open
+double-click `fb_client.exe` (local play) or `fb_server.exe` (host; open
 `http://<host>:8000/` in a browser). Every runtime is bundled; no installation steps.
 
 ### Server
 
 ```bash
-fg_server                            # defaults: game port 9527 + web port 8000
-fg_server --port 9527 --web-port 8000 --seed 12345 --hp 3 --input-seconds 60
-fg_server --web-port 0               # disable the web port (native protocol only)
-fg_server --selftest 50              # no network: run 50 local AI-vs-AI games as a self-check
+fb_server                            # defaults: game port 9527 + web port 8000
+fb_server --port 9527 --web-port 8000 --seed 12345 --hp 3 --input-seconds 60
+fb_server --web-port 0               # disable the web port (native protocol only)
+fb_server --selftest 50              # no network: run 50 local AI-vs-AI games as a self-check
 ```
 
 Command-line options double as the default configuration for newly created rooms (clients
@@ -146,9 +146,9 @@ can override them per room).
 ### C++ client
 
 ```bash
-fg_client                            # GUI: main menu → local vs AI / online play
-fg_client --selftest 10              # headless: 10 local games
-fg_client --screenshot shot          # auto-play and capture screenshots (dev verification)
+fb_client                            # GUI: main menu → local vs AI / online play
+fb_client --selftest 10              # headless: 10 local games
+fb_client --screenshot shot          # auto-play and capture screenshots (dev verification)
 ```
 
 **Local vs AI**: choose team size, soldiers per player, AI difficulty, HP, obstacle count,
@@ -182,9 +182,9 @@ same room or mix teams freely.
 ## Tests
 
 ```bash
-fg_tests                             # gtest unit tests (curves / world / AI / rooms / protocol / hashing ...)
-fg_server --selftest 100             # full-game self-check + same-seed reproducibility
-fg_client --selftest 100             # headless full games on the client
+fb_tests                             # gtest unit tests (curves / world / AI / rooms / protocol / hashing ...)
+fb_server --selftest 100             # full-game self-check + same-seed reproducibility
+fb_client --selftest 100             # headless full games on the client
 ```
 
 ## Repository layout
@@ -199,7 +199,7 @@ src/client/   app (state machine), ui_* (screens), render, net_client, headless 
 src/tests/    gtest unit tests
 web/static/   web client (vanilla JS, no build step): app.js / render.js / net.js / path.js /
               sha256.js / strings.js
-src/tools/    fg_play: a file-mailbox game client (drop an expression into a file to submit;
+src/tools/    fb_play: a file-mailbox game client (drop an expression into a file to submit;
               meant for scripts / AI assistants)
 ```
 

@@ -2,10 +2,10 @@
 find_package(asio CONFIG REQUIRED)
 find_package(cxxopts CONFIG REQUIRED)
 
-add_executable(fg_play
-    fg_play.cpp
+add_executable(fb_play
+    fb_play.cpp
 )
-target_link_libraries(fg_play PRIVATE fg_core asio::asio cxxopts::cxxopts)
+target_link_libraries(fb_play PRIVATE fg_core asio::asio cxxopts::cxxopts)
 
 # 发布布局：与其它可执行文件同层
-install(TARGETS fg_play RUNTIME DESTINATION .)
+install(TARGETS fb_play RUNTIME DESTINATION .)

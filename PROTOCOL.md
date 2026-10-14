@@ -1,4 +1,4 @@
-# 通信协议（function_game）
+# 通信协议（function_battle）
 
 客户端与服务器之间的通信协议。
 

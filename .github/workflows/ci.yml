@@ -49,11 +49,11 @@ jobs:
 
       - name: 单元测试
         shell: bash
-        run: ./build/src/tests${{ matrix.cfg_dir }}/fg_tests${{ matrix.ext }} --gtest_brief=1
+        run: ./build/src/tests${{ matrix.cfg_dir }}/fb_tests${{ matrix.ext }} --gtest_brief=1
 
       - name: 服务器自检
         shell: bash
-        run: ./build/src/server${{ matrix.cfg_dir }}/fg_server${{ matrix.ext }} --selftest 10
+        run: ./build/src/server${{ matrix.cfg_dir }}/fb_server${{ matrix.ext }} --selftest 10
 
       - name: 打包（tag 发布时）
         if: startsWith(github.ref, 'refs/tags/v')
@@ -64,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: package-${{ runner.os }}
-          path: build/function_game-*.zip
+          path: build/function_battle-*.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

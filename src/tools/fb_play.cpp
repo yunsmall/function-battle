@@ -575,7 +575,7 @@ int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    cxxopts::Options options("fg_play",
+    cxxopts::Options options("fb_play",
                              "文件信箱式对局客户端：连服务器打一局（我 = A 队 vs 人机 AI）");
     options.add_options()
         ("seed", "固定地图种子（整数；'-'/'random' 或省略 = 每把随机）",

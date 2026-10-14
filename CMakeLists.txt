@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(function_game VERSION 0.1.0 LANGUAGES CXX)
+project(function_battle VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,8 +54,8 @@ if(WIN32)
 endif()
 
 set(CPACK_GENERATOR ZIP)
-set(CPACK_PACKAGE_NAME "function_game")
+set(CPACK_PACKAGE_NAME "function_battle")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_FILE_NAME "function_game-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+set(CPACK_PACKAGE_FILE_NAME "function_battle-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)  # zip 内带顶层目录，解压干净
 include(CPack)

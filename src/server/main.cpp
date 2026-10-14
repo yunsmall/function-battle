@@ -135,7 +135,7 @@ int run_selftest(int games, const fg::GameConfig& cfg) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    cxxopts::Options options("function_game_server", "函数对战游戏服务器");
+    cxxopts::Options options("function_battle_server", "函数对战游戏服务器");
     options.add_options()("port", "游戏端口（原生 TCP 协议）",
                           cxxopts::value<uint16_t>()->default_value("9527"))(
         "web-port", "网页端口（WebSocket + 静态页面）",

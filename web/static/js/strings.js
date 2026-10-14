@@ -10,7 +10,7 @@
             status_online: '已连接',
             status_offline: '未连接',
             conn_lost: '与服务器的连接断开了',
-            conn_fail_hint: '请确认游戏服务器（fg_server）已启动，然后刷新页面',
+            conn_fail_hint: '请确认游戏服务器（fb_server）已启动，然后刷新页面',
 
             // 主菜单 / 建房
             create_room: '创建对局',

@@ -1,7 +1,7 @@
 // 图形客户端入口。
-//   function_game_client                正常打开窗口（主菜单）
-//   function_game_client --selftest N   无头跑 N 局本地人机，检查不会卡死
-//   function_game_client --screenshot P 自动进一局并截图（P_input/_flight/_menu.png），用于开发验证
+//   function_battle_client                正常打开窗口（主菜单）
+//   function_battle_client --selftest N   无头跑 N 局本地人机，检查不会卡死
+//   function_battle_client --screenshot P 自动进一局并截图（P_input/_flight/_menu.png），用于开发验证
 
 #include <cstdio>
 #include <string>
@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     // 客户区渲染尺寸与物理像素错位（画面经拉伸发糊）。声明感知后按物理像素渲染
     SetProcessDPIAware();
 #endif
-    cxxopts::Options options("function_game_client", "函数对战游戏客户端");
+    cxxopts::Options options("function_battle_client", "函数对战游戏客户端");
     // 不用 implicit_value：设了它的选项只认 --opt=value 写法，"--opt value" 的值会被
     // 当成位置参数悄悄丢掉（截图路径变成默认值，bug 找半天）
     options.add_options()(

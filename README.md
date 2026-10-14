@@ -56,7 +56,7 @@
 ## 架构
 
 ```
-fg_server（单进程，双端口共享同一个房间表）
+fb_server（单进程，双端口共享同一个房间表）
   9527  原生协议：长度前缀 + JSON 帧（C++ 客户端）
   8000  WebSocket 文本帧 + 静态文件（网页客户端；同源、同一套消息）
 ```
@@ -93,14 +93,14 @@ cmake --build build            # 或 ninja -C build
 Linux 上不需要图形客户端（raylib 预编译包仅 Windows），加 `-DFG_BUILD_CLIENT=OFF`
 只构建核心、服务器与测试。
 
-产物：`build/src/server/fg_server.exe`、`build/src/client/fg_client.exe`、
-`build/src/tests/fg_tests.exe`。
+产物：`build/src/server/fb_server.exe`、`build/src/client/fb_client.exe`、
+`build/src/tests/fb_tests.exe`。
 
 ### 打包发布（zip）
 
 ```bash
 cmake --install build --prefix dist   # 装到一个扁平目录（解压即用的布局）
-cd build && cpack -G ZIP              # 或直接打出 function_game-<版本>-<系统>.zip
+cd build && cpack -G ZIP              # 或直接打出 function_battle-<版本>-<系统>.zip
 ```
 
 发布包为扁平布局：exe、raylib.dll、MSVC 运行库、`web/` 静态页在同一层——服务器按
@@ -108,17 +108,17 @@ exe 所在目录定位网页文件，解压后从任何位置启动都能直接�
 
 ## 运行
 
-**从发布 zip 玩乐**：解压后在解压出的目录里运行——Windows 双击 `fg_client.exe`
-（单机人机）或 `fg_server.exe`（开服，浏览器打开 `http://<本机>:8000/`）；包内已
+**从发布 zip 玩乐**：解压后在解压出的目录里运行——Windows 双击 `fb_client.exe`
+（单机人机）或 `fb_server.exe`（开服，浏览器打开 `http://<本机>:8000/`）；包内已
 附带全部运行库，没有其他安装步骤。
 
 ### 服务器
 
 ```bash
-fg_server                            # 默认：游戏端口 9527 + 网页端口 8000
-fg_server --port 9527 --web-port 8000 --seed 12345 --hp 3 --input-seconds 60
-fg_server --web-port 0               # 关掉网页端口（只留原生协议）
-fg_server --selftest 50              # 不开网络：本地跑 50 局 AI 对战自检
+fb_server                            # 默认：游戏端口 9527 + 网页端口 8000
+fb_server --port 9527 --web-port 8000 --seed 12345 --hp 3 --input-seconds 60
+fb_server --web-port 0               # 关掉网页端口（只留原生协议）
+fb_server --selftest 50              # 不开网络：本地跑 50 局 AI 对战自检
 ```
 
 命令行选项同时是"创建房间"的默认配置（客户端可在房间内覆盖）。
@@ -126,9 +126,9 @@ fg_server --selftest 50              # 不开网络：本地跑 50 局 AI 对战
 ### C++ 客户端
 
 ```bash
-fg_client                            # 图形界面：主菜单 → 单机人机 / 联机对战
-fg_client --selftest 10              # 无头：本地人机跑 10 局
-fg_client --screenshot shot          # 自动对局并截图（shot_input.png 等，开发验证用）
+fb_client                            # 图形界面：主菜单 → 单机人机 / 联机对战
+fb_client --selftest 10              # 无头：本地人机跑 10 局
+fb_client --screenshot shot          # 自动对局并截图（shot_input.png 等，开发验证用）
 ```
 
 **单机人机**：设置页可选每队人数、每人士兵数、人机难度、血量、遮挡物、先手、
@@ -156,9 +156,9 @@ fg_client --screenshot shot          # 自动对局并截图（shot_input.png �
 ## 测试
 
 ```bash
-fg_tests                             # gtest 单元测试（曲线/世界/AI/房间/协议/哈希……）
-fg_server --selftest 100             # 整局自检 + 同种子复现性检查
-fg_client --selftest 100             # 客户端无头整局
+fb_tests                             # gtest 单元测试（曲线/世界/AI/房间/协议/哈希……）
+fb_server --selftest 100             # 整局自检 + 同种子复现性检查
+fb_client --selftest 100             # 客户端无头整局
 ```
 
 ## 目录结构
@@ -173,7 +173,7 @@ src/client/   app（应用状态机）、ui_*（各界面）、render、net_clie
 src/tests/    gtest 单元测试
 web/static/   网页客户端（原生 JS、无构建步骤）：app.js / render.js / net.js / path.js /
               sha256.js / strings.js
-src/tools/    fg_play：文件信箱式的对局客户端（往文件里写表达式即提交，供脚本/AI 助手玩）
+src/tools/    fb_play：文件信箱式的对局客户端（往文件里写表达式即提交，供脚本/AI 助手玩）
 ```
 
 协议与错误码表见 [PROTOCOL.md](PROTOCOL.md)。
