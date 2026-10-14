@@ -1,9 +1,6 @@
 # 构建产物（build/、build-linux/ 等）
 build*/
 
-# 第三方原始压缩包（备用，正常构建不需要）
-third_party/*.zip
-
 # 本地开发中间产物：验尸/验证脚本、截图、临时数据
 tmp/
 

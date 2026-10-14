@@ -77,10 +77,10 @@ git clone https://github.com/microsoft/vcpkg <vcpkg>   # 已装过 vcpkg 可跳�
 <vcpkg>/vcpkg install eigen3 nlohmann-json asio cxxopts exprtk gtest
 ```
 
-websocketpp（0.8.2）源码随仓库 `third_party/` 提供（与项目统一用 standalone asio）；
-raylib 5.5 官方预编译包不往仓库塞——配置时 CMake 自动从官方 release 下载并校验
-SHA-256（vcpkg 上的 6.0 有呈现回归，故不用）。然后配置构建（clang + Ninja 示例，
-换其他编译器/生成器同理）：
+websocketpp（0.8.2）与 raylib 5.5 官方预编译包都不进仓库——配置时 CMake 自动下载
+并校验 SHA-256（websocketpp 与项目统一用 standalone asio；raylib 不用 vcpkg 的
+6.0，因其存在呈现回归）。然后配置构建（clang + Ninja 示例，换其他编译器/生成器
+同理）：
 
 ```bash
 cmake -B build -GNinja \
@@ -183,5 +183,5 @@ scripts/      fg_play.py：文件信箱式的对局客户端（往文件里写�
 
 第三方依赖的许可：Eigen3（MPL-2.0）、nlohmann-json（MIT）、asio（Boost Software
 License）、cxxopts（MIT）、websocketpp（BSD-3-Clause）、gtest（BSD-3-Clause）、
-raylib 5.5（zlib，仓库内 `third_party/` 预编译包）、exprtk（MIT，其头文件内注明；
+raylib 5.5（zlib）、exprtk（MIT，其头文件内注明；
 老版 exprtk 曾为非商业许可，本仓库锁定的是 MIT 版）。

@@ -94,10 +94,9 @@ git clone https://github.com/microsoft/vcpkg <vcpkg>   # skip if vcpkg is alread
 <vcpkg>/vcpkg install eigen3 nlohmann-json asio cxxopts exprtk gtest
 ```
 
-websocketpp (0.8.2) sources ship in `third_party/` (standalone asio, consistent with the
-project); the raylib 5.5 official prebuilt package is not stored in the repo — CMake
-downloads it from the official release and verifies its SHA-256 at configure time
-(vcpkg's 6.0 has a rendering regression, hence not using it).
+websocketpp (0.8.2) and the raylib 5.5 official prebuilt package are not stored in the
+repo — CMake downloads both at configure time and verifies their SHA-256 (standalone
+asio for websocketpp; the raylib vcpkg port 6.0 is avoided due to a rendering regression).
 
 Then configure (clang + Ninja shown; other compilers/generators work the same):
 
@@ -210,6 +209,5 @@ Protocol and error-code reference: [PROTOCOL.md](PROTOCOL.md) (Chinese).
 This project is open-sourced under the **GPL-3.0** (full text in [LICENSE](LICENSE)).
 
 Third-party dependency licenses: Eigen3 (MPL-2.0), nlohmann-json (MIT), asio (Boost Software
-License), cxxopts (MIT), websocketpp (BSD-3-Clause), gtest (BSD-3-Clause), raylib 5.5 (zlib;
-prebuilt package under `third_party/`), exprtk (MIT, stated in its header; older versions of
+License), cxxopts (MIT), websocketpp (BSD-3-Clause), gtest (BSD-3-Clause), raylib 5.5 (zlib), exprtk (MIT, stated in its header; older versions of
 exprtk were non-commercial — this repository pins the MIT one).

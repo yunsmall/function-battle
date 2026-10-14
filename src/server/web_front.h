@@ -1,6 +1,6 @@
 #pragma once
 // Web 前端：独立端口上的 WebSocket（网页端实时对战）+ 静态文件（网页本体）。
-// 用 websocketpp（third_party，专为 asio 设计）：init_asio(&io) 复用服务器同一个
+// 用 websocketpp（配置时自动下载，见 server/CMakeLists）：init_asio(&io) 复用服务器同一个
 // io_context——所有回调都跑在 io 线程上，与"游戏逻辑不加锁"的约定一致。
 // 消息层与原生 TCP 完全共用：一个 WS 文本帧 = 一条 JSON（见 PROTOCOL.md 传输层小节）。
 
