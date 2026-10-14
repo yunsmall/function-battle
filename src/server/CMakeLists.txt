@@ -3,7 +3,6 @@ find_package(cxxopts CONFIG REQUIRED)
 
 add_executable(fg_server
     main.cpp
-    exe_path.cpp      # 跨平台取 exe 目录：按 exe 位置定位网页静态文件
     net.cpp
     server.cpp
     web_front.cpp

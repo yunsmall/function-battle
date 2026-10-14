@@ -199,7 +199,7 @@ src/client/   app (state machine), ui_* (screens), render, net_client, headless 
 src/tests/    gtest unit tests
 web/static/   web client (vanilla JS, no build step): app.js / render.js / net.js / path.js /
               sha256.js / strings.js
-scripts/      fg_play.py: a file-mailbox game client (drop an expression into a file to submit;
+src/tools/    fg_play: a file-mailbox game client (drop an expression into a file to submit;
               meant for scripts / AI assistants)
 ```
 

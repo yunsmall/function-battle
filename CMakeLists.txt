@@ -23,7 +23,6 @@ add_subdirectory(src)
 # web/static（见 src/server/main.cpp），解压后从任何位置都能直接运行
 install(DIRECTORY web/static DESTINATION web)
 install(FILES README.md README.en.md LICENSE PROTOCOL.md DESTINATION .)
-install(FILES scripts/fg_play.py DESTINATION scripts)
 
 if(WIN32)
     # clang 也用 MSVC 运行库（exe 依赖 vcruntime140/msvcp140）：随包分发，

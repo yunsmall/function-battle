@@ -173,7 +173,7 @@ src/client/   app（应用状态机）、ui_*（各界面）、render、net_clie
 src/tests/    gtest 单元测试
 web/static/   网页客户端（原生 JS、无构建步骤）：app.js / render.js / net.js / path.js /
               sha256.js / strings.js
-scripts/      fg_play.py：文件信箱式的对局客户端（往文件里写表达式即提交，供脚本/AI 助手玩）
+src/tools/    fg_play：文件信箱式的对局客户端（往文件里写表达式即提交，供脚本/AI 助手玩）
 ```
 
 协议与错误码表见 [PROTOCOL.md](PROTOCOL.md)。

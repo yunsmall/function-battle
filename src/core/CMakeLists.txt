@@ -14,6 +14,7 @@ add_library(fg_core STATIC
     think_pool.cpp
     room.cpp
     sha256.cpp
+    exe_path.cpp  # 跨平台取可执行文件目录（服务器定位静态文件、fg_play 放 session）
 )
 target_include_directories(fg_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # SYSTEM：ExprTk 头文件本身警告较多，不污染本工程的警告输出
