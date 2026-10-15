@@ -53,6 +53,17 @@ void run_flight(fg::World& w, int max_ticks = 100000) {
     EXPECT_LT(i, max_ticks) << "飞行阶段未能结束（疑似死循环）";
 }
 
+// 炮弹半径为 0 的段求交薄封装：纯几何用例检验段求交的数学本身，
+// 炮弹碰撞体膨胀的行为另有专门断言
+std::optional<double> seg_hit(const fg::Obstacle& ob, const fg::Vec2& a, const fg::Vec2& b,
+                              double crater) {
+    return fg::segment_hits_obstacle(ob, a, b, crater, 0.0);
+}
+std::optional<double> seg_hit_sq(const fg::Vec2& a, const fg::Vec2& b, const fg::Vec2& c,
+                                 double half) {
+    return fg::segment_hits_square(a, b, c, half, 0.0);
+}
+
 // 校验出生点的完整契约：每个士兵都不卡遮挡物、任意两个士兵不重叠
 void check_spawn_points(const fg::World& w, const fg::GameConfig& cfg, uint64_t seed) {
     std::vector<fg::Vec2> pos;
@@ -427,6 +438,165 @@ TEST(World, ObstacleBlocksGeometry) {
     EXPECT_TRUE(fg::obstacle_blocks(rect, fg::Vec2(3.9, 1.9), 1.0));
     EXPECT_FALSE(fg::obstacle_blocks(rect, fg::Vec2(3.9, 2.5), 1.0));
     EXPECT_FALSE(fg::obstacle_blocks(rect, fg::Vec2(4.5, 0.0), 1.0));
+}
+
+TEST(World, SegmentHitsObstacleGeometry) {
+    // 圆形：段直穿圆心附近，首接触精确落在圆周上
+    fg::Obstacle circle;
+    circle.is_circle = true;
+    circle.center = fg::Vec2(0.0, 0.0);
+    circle.radius = 2.0;
+    {
+        const auto t =
+            seg_hit(circle, fg::Vec2(3.0, 0.0), fg::Vec2(-3.0, 0.0), 1.0);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 1.0 / 6.0, 1e-12);  // 进圆处 x=2 → t=(3-2)/6
+        const fg::Vec2 hit = fg::Vec2(3.0, 0.0) + (*t) * fg::Vec2(-6.0, 0.0);
+        EXPECT_NEAR(fg::distance(hit, circle.center), 2.0, 1e-9);
+    }
+    // 远离：AABB 预筛拒绝
+    EXPECT_FALSE(
+        seg_hit(circle, fg::Vec2(10.0, 10.0), fg::Vec2(12.0, 10.0), 1.0)
+            .has_value());
+    // 从圆角上方掠过：1.9 < 2 命中、2.5 > 2 不中；恰好 2.0 相切按"无交"处理（接触长度为 0）
+    EXPECT_TRUE(seg_hit(circle, fg::Vec2(3.0, 1.9), fg::Vec2(-3.0, 1.9), 1.0)
+                    .has_value());
+    EXPECT_FALSE(seg_hit(circle, fg::Vec2(3.0, 2.5), fg::Vec2(-3.0, 2.5), 1.0)
+                     .has_value());
+    EXPECT_FALSE(seg_hit(circle, fg::Vec2(3.0, 2.0), fg::Vec2(-3.0, 2.0), 1.0)
+                     .has_value());
+    // 段起点已在圆内：首接触 t=0（立即接触）
+    {
+        const auto t =
+            seg_hit(circle, fg::Vec2(1.0, 0.0), fg::Vec2(5.0, 0.0), 1.0);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_DOUBLE_EQ(*t, 0.0);
+    }
+    // 炮弹碰撞体膨胀：判定圆比实体大一圈（r=2 + 炮弹 0.5 → 首接触提前到 x=2.5）
+    {
+        const auto t =
+            fg::segment_hits_obstacle(circle, fg::Vec2(3.0, 0.0), fg::Vec2(-3.0, 0.0), 1.0, 0.5);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 0.5 / 6.0, 1e-12);
+    }
+
+    // 坑豁免：首接触点落在坑里时跳到坑的右端再接触
+    fg::Obstacle with_hole = circle;
+    with_hole.craters.push_back(fg::Vec2(2.0, 0.0));  // 坑心骑在圆边界上
+    {
+        // 无坑首接触 t=1/6≈0.1667 落在坑区间 x∈[1.5,2.5]（t∈[1/12,1/4]）里 → 跳到 x=1.5（t=1/4）
+        const auto t =
+            seg_hit(with_hole, fg::Vec2(3.0, 0.0), fg::Vec2(-3.0, 0.0), 0.5);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 0.25, 1e-12);
+    }
+    // 坑大到覆盖整个形状：整段被挖空
+    EXPECT_FALSE(
+        seg_hit(with_hole, fg::Vec2(3.0, 0.0), fg::Vec2(-3.0, 0.0), 5.0)
+            .has_value());
+
+    // 矩形：slab 求交，首接触在进入边（x=-4）上
+    fg::Obstacle rect;
+    rect.is_circle = false;
+    rect.center = fg::Vec2(0.0, 0.0);
+    rect.half_w = 4.0;
+    rect.half_h = 2.0;
+    {
+        const auto t =
+            seg_hit(rect, fg::Vec2(-10.0, 0.0), fg::Vec2(10.0, 0.0), 1.0);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 6.0 / 20.0, 1e-12);
+    }
+    // 平行掠过矩形上方：2.5 > 半高 2 不接触；贴边线上（含边界语义）算接触
+    EXPECT_FALSE(seg_hit(rect, fg::Vec2(-10.0, 2.5), fg::Vec2(10.0, 2.5), 1.0)
+                     .has_value());
+    EXPECT_TRUE(seg_hit(rect, fg::Vec2(-10.0, 2.0), fg::Vec2(10.0, 2.0), 1.0)
+                    .has_value());
+    // 在矩形右侧外沿竖直走：x 恒为 5 > 半宽 4，不接触
+    EXPECT_FALSE(seg_hit(rect, fg::Vec2(5.0, -3.0), fg::Vec2(5.0, 3.0), 1.0)
+                     .has_value());
+}
+
+TEST(World, SegmentHitsSquareSoldier) {
+    // 士兵命中框：半宽 0.45 的正方形，首接触在进入边上
+    const fg::Vec2 c(1.0, 1.0);
+    const double half = 0.45;
+    {
+        const auto t = seg_hit_sq(fg::Vec2(0.0, 1.0), fg::Vec2(3.0, 1.0), c, half);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 0.55 / 3.0, 1e-12);  // 进入边 x = 1 - 0.45
+    }
+    // 擦过角外沿：|dy|=0.44 < 0.45 命中；|dy|=0.46 差 0.01 不中；
+    // |dy|=0.45 贴边（含边界语义，与方块命中的 <= 一致）命中
+    EXPECT_TRUE(
+        seg_hit_sq(fg::Vec2(0.0, 1.44), fg::Vec2(3.0, 1.44), c, half).has_value());
+    EXPECT_FALSE(
+        seg_hit_sq(fg::Vec2(0.0, 1.46), fg::Vec2(3.0, 1.46), c, half).has_value());
+    EXPECT_TRUE(
+        seg_hit_sq(fg::Vec2(0.0, 1.45), fg::Vec2(3.0, 1.45), c, half).has_value());
+    // 段完全在框外（上方 4 格）：不接触
+    EXPECT_FALSE(
+        seg_hit_sq(fg::Vec2(0.0, 5.0), fg::Vec2(3.0, 5.0), c, half).has_value());
+    // 炮弹碰撞体膨胀：判定半宽 0.45 + 炮弹 0.2 → 进入边 x = 1 − 0.65
+    {
+        const auto t = fg::segment_hits_square(fg::Vec2(0.0, 1.0), fg::Vec2(3.0, 1.0),
+                                               fg::Vec2(1.0, 1.0), 0.45, 0.2);
+        ASSERT_TRUE(t.has_value());
+        EXPECT_NEAR(*t, 0.35 / 3.0, 1e-12);
+    }
+}
+
+TEST(World, CraterContactLiesOnBoundary) {
+    // 炮弹的撞击接触点必须精确落在障碍边界上——这是连续段判定的核心收益：
+    // 旧的点判定会让炮弹先穿进障碍半格再被发现（"撞上后还往里飞一小段"）。
+    // 朝障碍中心直射，任一 CraterMade 事件点都不得越出该障碍的边界，
+    // 且至少有一个坑精确贴在被直撞障碍的边界上
+    int checked = 0;
+    for (uint64_t seed = 1; seed <= 12; ++seed) {
+        fg::GameConfig cfg;
+        cfg.match.turn_delay = 0.0;
+        cfg.match.seed = seed;
+        cfg.match.obstacle_count = 6;
+        cfg.match.first_team = 0;
+        fg::World w;
+        w.start(cfg, make_specs(1));
+        w.take_events();
+        const int cur = w.current_player_id();
+        if (cur < 0 || w.obstacles().empty()) continue;
+        const fg::Player* me = nullptr;
+        for (const auto& pl : w.players()) {
+            if (pl.id == cur) me = &pl;
+        }
+        ASSERT_NE(me, nullptr);
+        const fg::Vec2 from = me->current().pos;
+        const fg::Vec2 to = w.obstacles()[0].center;
+        if (fg::distance(from, to) < 1.0) continue;
+        ASSERT_TRUE(w.submit(cur, aim_at(from, to)).ok());
+        run_flight(w);
+        const double pr = w.config().world.projectile_radius;
+        bool exact_on_boundary = false;
+        for (const auto& ev : w.take_events()) {
+            if (ev.type != fg::EventType::CraterMade) continue;
+            const fg::Obstacle& ob = w.obstacles()[static_cast<size_t>(ev.obstacle_index)];
+            if (ob.is_circle) {
+                // 接触点恰在"实体半径 + 炮弹半径"的膨胀圆上
+                const double d = fg::distance(ev.pos, ob.center);
+                if (std::abs(d - (ob.radius + pr)) < 1e-6) exact_on_boundary = true;
+            } else {
+                // 矩形：至少一轴恰贴膨胀边，另一轴不越界
+                const double dx = std::abs(ev.pos.x() - ob.center.x());
+                const double dy = std::abs(ev.pos.y() - ob.center.y());
+                const bool on_edge =
+                    (std::abs(dx - (ob.half_w + pr)) < 1e-6 && dy <= ob.half_h + pr + 1e-6) ||
+                    (std::abs(dy - (ob.half_h + pr)) < 1e-6 && dx <= ob.half_w + pr + 1e-6);
+                if (on_edge) exact_on_boundary = true;
+            }
+            ++checked;
+        }
+        EXPECT_TRUE(exact_on_boundary)
+            << "seed=" << seed << "：至少一个坑应精确落在被直撞障碍的碰撞边界上";
+    }
+    EXPECT_GT(checked, 0) << "12 个种子下应至少发生一次撞墙（否则用例没有实际检验）";
 }
 
 // ---- 多士兵与展示停顿 ----

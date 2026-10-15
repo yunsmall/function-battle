@@ -43,9 +43,15 @@ bool in_bounds(const Vec2& p, const GameConfig& cfg) {
 Path build_path(std::vector<Vec2> pts) {
     Path path;
     path.points = std::move(pts);
-    path.cum.resize(path.points.size(), 0.0);
-    for (size_t i = 1; i < path.points.size(); ++i) {
-        path.cum[i] = path.cum[i - 1] + (path.points[i] - path.points[i - 1]).norm();
+    // 直接推进生成 cum（免去 resize 的零初始化再整体覆盖）；累加顺序与原来相同，
+    // 每个元素的值逐位一致
+    path.cum.clear();
+    if (!path.points.empty()) {
+        path.cum.reserve(path.points.size());
+        path.cum.push_back(0.0);
+        for (size_t i = 1; i < path.points.size(); ++i) {
+            path.cum.push_back(path.cum[i - 1] + (path.points[i] - path.points[i - 1]).norm());
+        }
     }
     return path;
 }
@@ -73,7 +79,8 @@ CurveResult sample_y_of_x(const CurveRequest& req, const Vec2& origin, const Gam
 
     const bool field = (cfg.room.coord_origin == CoordOrigin::Field);
     const double base = field ? (req.mirror ? -origin.x() : origin.x()) : 0.0;
-    expr->set_var("x", base);
+    double* xv = expr->var_ref("x");  // 采样热循环每步写一次，取指针省哈希查找
+    *xv = base;
     double f0 = 0.0;
     if (!expr->eval_finite(f0))
         return {.error = {"curve_bad_f0", "曲线起点处的函数值不是有限数值，无法确定发射点"}};
@@ -84,7 +91,7 @@ CurveResult sample_y_of_x(const CurveRequest& req, const Vec2& origin, const Gam
     double travel = 0.0;
     for (size_t i = 0; i < kMaxPoints; ++i) {
         const double t = sign * static_cast<double>(i) * kDxStep;
-        expr->set_var("x", field ? (base + t) : t);
+        *xv = field ? (base + t) : t;
         double v = 0.0;
         if (!expr->eval_finite(v)) break;  // 曲线在此断开（如 1/x 的奇点）
         const Vec2 p(t, v - f0);
@@ -107,7 +114,8 @@ CurveResult sample_x_of_y(const CurveRequest& req, const Vec2& origin, const Gam
 
     const bool field = (cfg.room.coord_origin == CoordOrigin::Field);
     const double base = field ? origin.y() : 0.0;
-    expr->set_var("y", base);
+    double* yv = expr->var_ref("y");  // 采样热循环每步写一次，取指针省哈希查找
+    *yv = base;
     double f0 = 0.0;
     if (!expr->eval_finite(f0))
         return {.error = {"curve_bad_f0", "曲线起点处的函数值不是有限数值，无法确定发射点"}};
@@ -118,7 +126,7 @@ CurveResult sample_x_of_y(const CurveRequest& req, const Vec2& origin, const Gam
     double travel = 0.0;
     for (size_t i = 0; i < kMaxPoints; ++i) {
         const double t = sign * static_cast<double>(i) * kDxStep;
-        expr->set_var("y", field ? (base + t) : t);
+        *yv = field ? (base + t) : t;
         double v = 0.0;
         if (!expr->eval_finite(v)) break;
         const Vec2 p(v - f0, t);
@@ -153,7 +161,8 @@ CurveResult sample_polar(const CurveRequest& req, const Vec2& origin, const Game
     steps = std::clamp<size_t>(steps, 2, kMaxPoints);
 
     // 锚点：theta = p_start 处的点
-    expr->set_var("theta", p_start);
+    double* th = expr->var_ref("theta");  // 采样热循环每步写一次，取指针省哈希查找
+    *th = p_start;
     double r0 = 0.0;
     if (!expr->eval_finite(r0)) return {.error = {"curve_bad_anchor_r", "起点处 r 不是有限数值"}};
     const Vec2 anchor(r0 * std::cos(p_start), r0 * std::sin(p_start));
@@ -163,7 +172,7 @@ CurveResult sample_polar(const CurveRequest& req, const Vec2& origin, const Game
     double travel = 0.0;
     for (size_t i = 0; i < steps; ++i) {
         const double theta = p_start + span * static_cast<double>(i) / static_cast<double>(steps - 1);
-        expr->set_var("theta", theta);
+        *th = theta;
         double r = 0.0;
         if (!expr->eval_finite(r)) break;
         const Vec2 p(r * std::cos(theta) - anchor.x(), r * std::sin(theta) - anchor.y());
@@ -202,8 +211,10 @@ CurveResult sample_parametric(const CurveRequest& req, const Vec2& origin, const
         2.0 * std::hypot(cfg.world.map_x_max - cfg.world.map_x_min,
                          cfg.world.map_y_max - cfg.world.map_y_min);
 
-    ex->set_var("t", p_start);
-    ey->set_var("t", p_start);
+    double* tx = ex->var_ref("t");  // 两条表达式持有各自独立的变量存储，热循环直接写
+    double* ty = ey->var_ref("t");
+    *tx = p_start;
+    *ty = p_start;
     double x0 = 0.0, y0 = 0.0;
     if (!ex->eval_finite(x0) || !ey->eval_finite(y0))
         return {.error = {"curve_bad_anchor_xy", "起点处坐标不是有限数值"}};
@@ -213,8 +224,8 @@ CurveResult sample_parametric(const CurveRequest& req, const Vec2& origin, const
     double travel = 0.0;
     for (size_t i = 0; i < steps; ++i) {
         const double t = p_start + span * static_cast<double>(i) / static_cast<double>(steps - 1);
-        ex->set_var("t", t);
-        ey->set_var("t", t);
+        *tx = t;
+        *ty = t;
         double xv = 0.0, yv = 0.0;
         if (!ex->eval_finite(xv) || !ey->eval_finite(yv)) break;
         const Vec2 p(xv - x0, yv - y0);
@@ -235,10 +246,12 @@ CurveResult sample_ode1(const CurveRequest& req, const Vec2& origin, const GameC
 
     const double h = kOdeStep * ((req.dir == FireDir::Positive) ? 1.0 : -1.0);
 
+    double* vx = expr->var_ref("x");  // RK4 每步多次求值，取指针省哈希查找
+    double* vy = expr->var_ref("y");
     // 求 f(x, y)；ok 返回求值是否得到有限值
     auto slope = [&](double xx, double yy, bool& ok) -> double {
-        expr->set_var("x", xx);
-        expr->set_var("y", yy);
+        *vx = xx;
+        *vy = yy;
         double v = 0.0;
         ok = expr->eval_finite(v);
         return v;
@@ -288,13 +301,19 @@ CurveResult sample_ode2(const CurveRequest& req, const Vec2& origin, const GameC
 
     const double h = kOde2Step;
 
+    double* ft = fx->var_ref("t");  // 六个变量存储各取一次指针，RK4 内循环直接写
+    double* fxv = fx->var_ref("x");
+    double* fyv = fx->var_ref("y");
+    double* gt = fy->var_ref("t");
+    double* gxv = fy->var_ref("x");
+    double* gyv = fy->var_ref("y");
     auto eval2 = [&](double tt, double xx, double yy, double& dx, double& dy) -> bool {
-        fx->set_var("t", tt);
-        fx->set_var("x", xx);
-        fx->set_var("y", yy);
-        fy->set_var("t", tt);
-        fy->set_var("x", xx);
-        fy->set_var("y", yy);
+        *ft = tt;
+        *fxv = xx;
+        *fyv = yy;
+        *gt = tt;
+        *gxv = xx;
+        *gyv = yy;
         return fx->eval_finite(dx) && fy->eval_finite(dy);
     };
 
@@ -349,10 +368,13 @@ CurveResult sample_ypp(const CurveRequest& req, const Vec2& origin, const GameCo
 
     const double h = kOdeStep * ((req.dir == FireDir::Positive) ? 1.0 : -1.0);
 
+    double* ax = expr->var_ref("x");  // RK4 每步多次求值，取指针省哈希查找
+    double* ay = expr->var_ref("y");
+    double* ady = expr->var_ref("dy");
     auto accel = [&](double xx, double yy, double dy, bool& ok) -> double {
-        expr->set_var("x", xx);
-        expr->set_var("y", yy);
-        expr->set_var("dy", dy);
+        *ax = xx;
+        *ay = yy;
+        *ady = dy;
         double v = 0.0;
         ok = expr->eval_finite(v);
         return v;

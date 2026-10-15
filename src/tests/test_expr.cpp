@@ -200,3 +200,83 @@ TEST(Expr, NonFiniteDetected) {
     EXPECT_TRUE(e2->eval_finite(out));
     EXPECT_DOUBLE_EQ(out, 7.0);
 }
+
+// ---------- 编译槽复用（expr.cpp 的线程内槽）的语义守护 ----------
+
+TEST(Expr, ReusedCompilesEvaluateIndependently) {
+    // 模拟决策里连续编译上百条表达式的情形：交错编译多条、逐条求值都要正确，
+    // 已编译的旧表达式不受后续编译影响
+    fg::Error err;
+    for (int round = 0; round < 8; ++round) {
+        auto a = fg::compile_expression("x*2", {"x"}, err);
+        auto b = fg::compile_expression("x+1.5", {"x"}, err);
+        ASSERT_TRUE(a.has_value()) << err.message;
+        ASSERT_TRUE(b.has_value()) << err.message;
+        a->set_var("x", 3.0);
+        b->set_var("x", 4.0);
+        EXPECT_DOUBLE_EQ(a->eval(), 6.0);
+        EXPECT_DOUBLE_EQ(b->eval(), 5.5);
+        a->set_var("x", 10.0);  // 重设 a 后 b 不受影响
+        EXPECT_DOUBLE_EQ(a->eval(), 20.0);
+        EXPECT_DOUBLE_EQ(b->eval(), 5.5);
+    }
+}
+
+TEST(Expr, TwoLiveExpressionsShareNoState) {
+    // 参数方程/二阶 ODE 会同时持有两条表达式（x、y 分量）：变量存储必须完全独立
+    fg::Error err;
+    auto e1 = fg::compile_expression("t*2", {"t"}, err);
+    auto e2 = fg::compile_expression("t+100", {"t"}, err);
+    ASSERT_TRUE(e1.has_value() && e2.has_value()) << err.message;
+    e1->set_var("t", 1.0);
+    e2->set_var("t", 2.0);
+    EXPECT_DOUBLE_EQ(e1->eval(), 2.0);
+    EXPECT_DOUBLE_EQ(e2->eval(), 102.0);
+    e2->set_var("t", 5.0);  // 换着改再求值，值各归各
+    EXPECT_DOUBLE_EQ(e1->eval(), 2.0);
+    EXPECT_DOUBLE_EQ(e2->eval(), 105.0);
+}
+
+TEST(Expr, FreshCompileStartsWithZeroVars) {
+    // 槽复用时变量存储里会留上一表达式的值：新表达式在 set_var 之前读到的
+    // 必须是 0（与"全新对象初始为 0"一致，调用方没 set 就 eval 时行为相同）
+    fg::Error err;
+    {
+        auto e1 = fg::compile_expression("x", {"x"}, err);
+        ASSERT_TRUE(e1.has_value()) << err.message;
+        e1->set_var("x", 42.0);
+        EXPECT_DOUBLE_EQ(e1->eval(), 42.0);
+    }  // e1 销毁 → 槽归还；下一条编译大概率复用同一槽
+    auto e2 = fg::compile_expression("x", {"x"}, err);
+    ASSERT_TRUE(e2.has_value()) << err.message;
+    EXPECT_DOUBLE_EQ(e2->eval(), 0.0);
+}
+
+TEST(Expr, VarRefMatchesSetVar) {
+    // var_ref 与 set_var 写的是同一处存储；未注册名返回空
+    fg::Error err;
+    auto e = fg::compile_expression("x*3", {"x"}, err);
+    ASSERT_TRUE(e.has_value()) << err.message;
+    double* p = e->var_ref("x");
+    ASSERT_NE(p, nullptr);
+    *p = 7.0;
+    EXPECT_DOUBLE_EQ(e->eval(), 21.0);
+    EXPECT_TRUE(e->set_var("x", 2.0));
+    EXPECT_DOUBLE_EQ(*p, 2.0);
+    EXPECT_EQ(e->var_ref("nope"), nullptr);
+}
+
+TEST(Expr, VariableSetMatchesAllCallers) {
+    // 编译槽的变量全集必须覆盖所有采样模式用到的 vars 组合（见 curve.cpp）：
+    // 将来采样侧新增变量而没同步全集会在这里失败
+    fg::Error err;
+    const std::vector<std::vector<std::string>> combos = {
+        {"x"}, {"y"}, {"theta"}, {"t"}, {"x", "y"}, {"t", "x", "y"}, {"x", "y", "dy"},
+    };
+    for (const auto& vars : combos) {
+        auto e = fg::compile_expression(vars.front(), vars, err);
+        ASSERT_TRUE(e.has_value()) << "vars 组合没被全集覆盖：" << vars.front() << " / "
+                                   << err.message;
+        EXPECT_NE(e->var_ref(vars.front()), nullptr);
+    }
+}

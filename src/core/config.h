@@ -69,6 +69,9 @@ struct WorldConstants {
     double projectile_speed = 12.0;  // 炮弹速度（单位/秒）
     double max_travel = 300.0;       // 炮弹最大行程（单位），超过即销毁
     double crater_radius = 1.2;      // 炮弹炸出的坑半径
+    // 炮弹的圆形碰撞体半径：撞障碍/打士兵按"圆与形状接触"判定，比玩家方块
+    // （半宽 0.45）小一截——擦边才算碰上，判定不至于胖到"看着没碰到也爆"
+    double projectile_radius = 0.2;
 };
 
 // 默认世界常量：联机房间与单机都用这一份

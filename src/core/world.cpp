@@ -2,24 +2,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "rng.h"
 
 namespace fg {
 
 namespace {
-// 炮弹碰撞检测的子步长：远小于玩家方块边长与最小遮挡物尺寸，
-// 用逐点检测即可避免"一步跨过目标"的漏检
+// 炮弹推进的子步长：碰撞判定本身是连续线段求交（见 segment_hits_obstacle），
+// 子步只决定出界、炮口保护这些点判据的粒度——0.25 远小于任何目标与障碍的尺寸，
+// 点判据不会漏
 constexpr double kSubStep = 0.25;
-// 炮口保护（借鉴参考实现）：发射者本人要等炮弹飞出足够远才可能被自己伤到。
-// 弧长与"离炮口距离"两个条件都要满足：只看弧长，原地绕小圈的曲线瞬间自杀；
+// 炮口保护（借鉴参考实现）：发射者本人要等炮弹飞出足够弧长、且弹道起点已脱离
+// 自己的碰撞方块，才可能被自己伤到。只看弧长，原地绕小圈的曲线瞬间自杀；
 // 只看距离，飞出一点再折回的第二段会自杀
 constexpr double kArmLength = 1.2;
-constexpr double kArmClearance = 0.2;
-// 出界宽限（秒）：炮弹飞出地图边界后不立即销毁，给"绕回来"留时间窗——曲线弹道
-// 可以飞出地图再绕回（高抛越过上边界、大弧线从侧面兜回），一出界就杀会误伤这类
-// 合法弹道。匀速运动下时间宽限等价于弧长宽限（速度×秒）
-constexpr double kOutGraceSec = 3.0;
+// kOutGraceSec（出界宽限）见 world.h——AI 评估要与飞行同构地模拟它
 // 炮弹全程飞行时间的硬上限（秒）：极小速度这类毒配置会把对局无限期锁死在飞行阶段，
 // 超时一律判死兜底；正常炮弹远用不到（最长行程 300 弧长 ÷ 默认速度 12 ≈ 25 秒）
 constexpr double kMaxFlightSec = 60.0;
@@ -31,14 +29,27 @@ double dist_point_to_square(const Vec2& p, const Vec2& c, double h) {
     return std::hypot(dx, dy);
 }
 
-// 点是否落在士兵的方块内（士兵是小方块，炮弹出发点在方块正中心）
-bool point_in_soldier(const Soldier& s, const Vec2& p, double half) {
-    return std::abs(p.x() - s.pos.x()) <= half && std::abs(p.y() - s.pos.y()) <= half;
-}
-
 // 命中去重的 key：player_id 与士兵序号拼成一个整数（士兵序号最多 4，*16 安全）
 long soldier_key(int player_id, int soldier_index) {
     return static_cast<long>(player_id) * 16 + static_cast<long>(soldier_index);
+}
+
+// 线段 a→b 落在圆 c（半径 r）内的参数区间（可能超出 [0,1]；无交或相切返回空）
+std::optional<std::pair<double, double>> segment_circle_interval(const Vec2& a, const Vec2& b,
+                                                                 const Vec2& c, double r) {
+    const Vec2 d = b - a;
+    const double aa = d.squaredNorm();
+    const Vec2 f = a - c;
+    if (aa < 1e-18) {  // 退化段（起讫重合）：等价于点判定
+        return f.squaredNorm() <= r * r ? std::optional{std::pair{0.0, 1.0}} : std::nullopt;
+    }
+    // 二次方程 |a + t·d − c|² ≤ r² 的解区间
+    const double bb = 2.0 * f.dot(d);
+    const double cc = f.squaredNorm() - r * r;
+    const double disc = bb * bb - 4.0 * aa * cc;
+    if (disc <= 0.0) return std::nullopt;
+    const double sq = std::sqrt(disc);
+    return std::pair{(-bb - sq) / (2.0 * aa), (-bb + sq) / (2.0 * aa)};
 }
 }  // namespace
 
@@ -61,6 +72,117 @@ bool obstacle_overlaps_circle(const Obstacle& ob, const Vec2& center, double rad
     const double nx = std::clamp(center.x(), ob.center.x() - ob.half_w, ob.center.x() + ob.half_w);
     const double ny = std::clamp(center.y(), ob.center.y() - ob.half_h, ob.center.y() + ob.half_h);
     return distance(Vec2(nx, ny), center) <= radius;
+}
+
+std::optional<double> segment_hits_obstacle(const Obstacle& ob, const Vec2& a, const Vec2& b,
+                                            double crater_radius, double projectile_radius) {
+    // 非有限端点按"不相交"拒绝：NaN 经 slab 除法会一路穿过比较（与数值比较恒 false）
+    // 伪造出 t=0 的假接触。正常路径不会出现非有限点（sample_curve 的 in_bounds 用
+    // >=/<= 天然拒绝 NaN），这里是防采样层未来漏洞的兜底
+    if (!std::isfinite(a.x()) || !std::isfinite(a.y()) || !std::isfinite(b.x()) ||
+        !std::isfinite(b.y())) {
+        return std::nullopt;
+    }
+    // 按炮弹圆的 Minkowski 膨胀：判定形状比实体大一圈 projectile_radius
+    const double ex = (ob.is_circle ? ob.radius : ob.half_w) + projectile_radius;
+    const double ey = (ob.is_circle ? ob.radius : ob.half_h) + projectile_radius;
+    // 包围盒预筛：段与障碍 AABB 无重叠直接拒——AI 评估每次要过几千个"子段×障碍"对，
+    // 精确求交只应发生在近旁少数对上
+    const double min_x = std::min(a.x(), b.x());
+    const double max_x = std::max(a.x(), b.x());
+    const double min_y = std::min(a.y(), b.y());
+    const double max_y = std::max(a.y(), b.y());
+    if (min_x > ob.center.x() + ex) return std::nullopt;
+    if (max_x < ob.center.x() - ex) return std::nullopt;
+    if (min_y > ob.center.y() + ey) return std::nullopt;
+    if (max_y < ob.center.y() - ey) return std::nullopt;
+
+    std::optional<std::pair<double, double>> cover;
+    if (ob.is_circle) {
+        cover = segment_circle_interval(a, b, ob.center, ob.radius + projectile_radius);
+    } else {
+        // 矩形：两个轴的 slab 求交（膨胀半宽，与 obstacle_blocks 一样含边界）
+        const Vec2 d = b - a;
+        double lo = 0.0, hi = 1.0;
+        bool ok = true;
+        for (int axis = 0; axis < 2 && ok; ++axis) {
+            const double p0 = a[axis];
+            const double half = (axis == 0) ? ex : ey;  // 复用膨胀半宽（矩形时与前式同值）
+            const double mn = ob.center[axis] - half;
+            const double mx = ob.center[axis] + half;
+            if (std::abs(d[axis]) < 1e-18) {
+                ok = p0 >= mn && p0 <= mx;  // 与该轴平行：留在带内才可能相交
+                continue;
+            }
+            double t0 = (mn - p0) / d[axis];
+            double t1 = (mx - p0) / d[axis];
+            if (t0 > t1) std::swap(t0, t1);
+            lo = std::max(lo, t0);
+            hi = std::min(hi, t1);
+            ok = lo <= hi;
+        }
+        if (ok) cover = std::pair{lo, hi};
+    }
+    if (!cover) return std::nullopt;
+    auto [lo, hi] = *cover;
+    lo = std::max(lo, 0.0);
+    hi = std::min(hi, 1.0);
+    if (lo > hi) return std::nullopt;
+
+    // 坑豁免：从入口 lo 起，落在坑区间内就跳到该坑右端，重复到不在任何坑内。
+    // 每次跳跃都严格向右跨过至少一个坑的右端（t 单调增、坑数有限），循环很快收敛，
+    // 不需要维护区间集合——与 obstacle_blocks 的坑豁免在测度意义下一致
+    double t = lo;
+    if (ob.craters.empty()) return t;  // 无坑可豁免（原循环空转一轮也会落在同一返回）
+    for (size_t guard = 0; guard <= ob.craters.size(); ++guard) {
+        double next = -1.0;
+        for (const Vec2& cc : ob.craters) {
+            // 线段包围盒与坑圆不相交则跳过（被拒时下面的精确求交本来也无解）
+            if (max_x < cc.x() - crater_radius || min_x > cc.x() + crater_radius ||
+                max_y < cc.y() - crater_radius || min_y > cc.y() + crater_radius) {
+                continue;
+            }
+            const auto hole = segment_circle_interval(a, b, cc, crater_radius);
+            if (hole && hole->first <= t && t < hole->second) {
+                next = std::max(next, hole->second);  // 多坑叠在一处时跳到并集右端
+            }
+        }
+        if (next < 0.0) break;
+        t = next;
+        if (t > hi) return std::nullopt;  // 剩余区间全被坑覆盖
+    }
+    return t;
+}
+
+std::optional<double> segment_hits_square(const Vec2& a, const Vec2& b, const Vec2& center,
+                                          double half, double projectile_radius) {
+    // 非有限端点按"不相交"拒绝（理由见 segment_hits_obstacle 的同款兜底）
+    if (!std::isfinite(a.x()) || !std::isfinite(a.y()) || !std::isfinite(b.x()) ||
+        !std::isfinite(b.y())) {
+        return std::nullopt;
+    }
+    // 士兵命中框：两个轴的 slab 求交（判定半宽含炮弹半径，方角处圆角膨胀被
+    // 近似成直角）；lo==hi（擦着边角）也算命中，与方块命中的"含边界"语义一致。
+    // 士兵没有坑豁免，无需再切区间
+    const double h = half + projectile_radius;
+    const Vec2 d = b - a;
+    double lo = 0.0, hi = 1.0;
+    for (int axis = 0; axis < 2; ++axis) {
+        const double p0 = a[axis];
+        const double mn = center[axis] - h;
+        const double mx = center[axis] + h;
+        if (std::abs(d[axis]) < 1e-18) {
+            if (p0 < mn || p0 > mx) return std::nullopt;
+            continue;
+        }
+        double t0 = (mn - p0) / d[axis];
+        double t1 = (mx - p0) / d[axis];
+        if (t0 > t1) std::swap(t0, t1);
+        lo = std::max(lo, t0);
+        hi = std::min(hi, t1);
+        if (lo > hi) return std::nullopt;
+    }
+    return lo;  // lo 已钳在 [0,1]（初值 0 起、只与交集取大）
 }
 
 void World::start(const GameConfig& cfg, const std::vector<PlayerSpec>& specs) {
@@ -230,6 +352,7 @@ Error World::submit(int player_id, const CurveRequest& request) {
     p.owner_soldier = si;
     p.request = request;
     p.path = std::move(res.path);
+    p.last_pos = p.path.points.front();  // 段判定的起点从炮口开始
     p.speed = cfg_.world.projectile_speed;
     // 发射者不在这里预标记：炮口保护由 step_flight 的 arm 判定负责，
     // 飞出足够远后曲线绕回来仍可能伤到自己（借鉴参考实现的机制）
@@ -357,6 +480,10 @@ void World::step_flight(double dt) {
     p.flight_time += dt;
     if (p.flight_time > kMaxFlightSec) p.dead = true;
     double remaining = p.speed * dt;
+    // 子步的起点：碰撞以段 [prev, pos] 为单位做连续求交。起点取自炮弹上一步的
+    // 位置（last_pos 跨帧持久），不能在本函数里初始化——step_flight 每帧调用，
+    // 局部初值会让每帧的判定段从炮口重新拉起
+    Vec2 prev = p.last_pos;
 
     // 剩余量判据用 > 0：推进量再小也让它照常累积（被阈值吞掉同样会永远飞不到头）
     while (remaining > 0.0 && !p.dead) {
@@ -369,11 +496,17 @@ void World::step_flight(double dt) {
         const bool past_end = (p.travel >= p.path.length());
         const Vec2 pos = p.path.at(p.travel);
 
-        // 炮口保护：距炮口够远且已飞出足够弧长才解除（一旦解除永久解除）
+        // 炮口保护：距炮口够远且已飞出足够弧长才解除（一旦解除永久解除）。距离
+        // 判据看本子步的起点：段判定下"这段还碰不碰得到发射者"由起点决定，起点
+        // 脱离自己的膨胀方块（两轴任一越界即在外）后，只有"真的折回来撞上"才会
+        // 命中——那本来就该算。用终点距离是不够的：终点在外时整段仍可能还在
+        // 方块内（擦过角），会误伤发射者
         if (!p.armed) {
-            const double from_muzzle = (pos - p.path.points.front()).norm();
-            if (p.travel >= kArmLength &&
-                from_muzzle > cfg_.world.player_half_size + kArmClearance) {
+            const Vec2 muzzle = p.path.points.front();
+            const double h = cfg_.world.player_half_size + cfg_.world.projectile_radius;
+            const bool clear =
+                std::abs(prev.x() - muzzle.x()) > h || std::abs(prev.y() - muzzle.y()) > h;
+            if (p.travel >= kArmLength && clear) {
                 p.armed = true;
             }
         }
@@ -390,6 +523,17 @@ void World::step_flight(double dt) {
             p.out_mark = -1.0;
         }
 
+        // 本子步的连续碰撞：a) 段 [prev, pos] 对所有障碍求交，取最小的撞墙参数
+        // t_wall；b) 士兵命中（段与方块求交得 t_s）只在几何上先于撞墙时才结算。
+        // 与旧的点判定相比：擦边不会漏检、接触点精确落在几何边界上（不再"先穿进
+        // 障碍再被发现"），坑心与命中位置也都取在接触点
+        double t_wall = 2.0;  // > 1 表示本段无撞墙
+        for (const auto& ob : obstacles_) {
+            if (const auto t = segment_hits_obstacle(ob, prev, pos, cfg_.world.crater_radius,
+                                                     cfg_.world.projectile_radius)) {
+                t_wall = std::min(t_wall, *t);
+            }
+        }
         // 命中士兵：扣血后穿透继续（同一炮弹对同一士兵只结算一次）
         for (auto& pl : players_) {
             for (size_t si = 0; si < pl.soldiers.size(); ++si) {
@@ -404,49 +548,46 @@ void World::step_flight(double dt) {
                     p.hit_soldiers.end()) {
                     continue;
                 }
-                if (point_in_soldier(sd, pos, cfg_.world.player_half_size)) {
-                    p.hit_soldiers.push_back(key);
-                    sd.hp -= 1;
-                    events_.push_back(Event{.type = EventType::PlayerHit,
+                const auto t_s = segment_hits_square(prev, pos, sd.pos,
+                                                     cfg_.world.player_half_size,
+                                                     cfg_.world.projectile_radius);
+                if (!t_s || *t_s > t_wall) continue;  // 墙后的士兵打不到
+                const Vec2 hit_pos = prev + (pos - prev) * (*t_s);
+                p.hit_soldiers.push_back(key);
+                sd.hp -= 1;
+                events_.push_back(Event{.type = EventType::PlayerHit,
+                                        .player_id = p.owner_id,
+                                        .soldier = p.owner_soldier,
+                                        .target_id = pl.id,
+                                        .target_soldier = static_cast<int>(si),
+                                        .pos = hit_pos,
+                                        .hp_left = sd.hp});
+                if (sd.hp <= 0) {
+                    sd.alive = false;
+                    events_.push_back(Event{.type = EventType::PlayerDied,
                                             .player_id = p.owner_id,
                                             .soldier = p.owner_soldier,
                                             .target_id = pl.id,
                                             .target_soldier = static_cast<int>(si),
-                                            .pos = pos,
-                                            .hp_left = sd.hp});
-                    if (sd.hp <= 0) {
-                        sd.alive = false;
-                        events_.push_back(Event{.type = EventType::PlayerDied,
-                                                .player_id = p.owner_id,
-                                                .soldier = p.owner_soldier,
-                                                .target_id = pl.id,
-                                                .target_soldier = static_cast<int>(si),
-                                                .pos = sd.pos});
-                    }
+                                            .pos = sd.pos});
                 }
             }
         }
 
         // 命中遮挡物：爆炸把周围（坑圆覆盖到的）所有障碍都炸出坑并销毁炮弹——
         // 不只击中的那块，紧挨爆炸点的石头也被啃掉一角（坑内区域不再阻挡后续炮弹）
-        bool hits_wall = false;
-        for (const auto& ob : obstacles_) {
-            if (obstacle_blocks(ob, pos, cfg_.world.crater_radius)) {
-                hits_wall = true;
-                break;
-            }
-        }
-        if (hits_wall) {
+        if (t_wall <= 1.0) {
+            const Vec2 hit_pos = prev + (pos - prev) * t_wall;
             for (size_t i = 0; i < obstacles_.size(); ++i) {
-                if (!obstacle_overlaps_circle(obstacles_[i], pos, cfg_.world.crater_radius)) {
+                if (!obstacle_overlaps_circle(obstacles_[i], hit_pos, cfg_.world.crater_radius)) {
                     continue;
                 }
-                obstacles_[i].craters.push_back(pos);
+                obstacles_[i].craters.push_back(hit_pos);
                 events_.push_back(Event{.type = EventType::CraterMade,
                                         .player_id = p.owner_id,
                                         .soldier = p.owner_soldier,
                                         .obstacle_index = static_cast<int>(i),
-                                        .pos = pos});
+                                        .pos = hit_pos});
             }
             p.dead = true;
         }
@@ -455,6 +596,7 @@ void World::step_flight(double dt) {
             p.dead = true;  // 轨迹走到尽头（终点位置的碰撞已判定完）
             break;
         }
+        prev = p.last_pos = pos;  // 子步推进同时持久化起点（跨帧的段判定链）
     }
 
     if (p.dead) {

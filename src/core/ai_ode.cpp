@@ -65,7 +65,6 @@ CurveRequest make_ode_slope_step(double dx, double dy, double x0, double offset)
 
 void add_ode_candidates(std::vector<CurveCandidate>& out, bool horizontal, double dx, double dy,
                         const Vec2& origin, const Vec2& aim, const World& world, Rng& rng) {
-    (void)rng;  // 微分方程类的参数都是解析算出来的，不需要随机数
     const double v = horizontal ? dy : dx;
     // 与 ai_curves.cpp 同源的小地图参数（原 6.0 是 120x80 地图时期的取值）
     const double amp = std::max(2.4, 0.4 * std::abs(v));
@@ -73,17 +72,20 @@ void add_ode_candidates(std::vector<CurveCandidate>& out, bool horizontal, doubl
         out.push_back(evaluate_candidate(req, origin, aim, world));
     };
 
-    // dy/dx 类只能沿 x 方向积分：主向在 x 且不能太短，否则频率参数病态
+    // dy/dx 类只能沿 x 方向积分：主向在 x 且不能太短，否则频率参数病态。
+    // RK4 积分采样比普通曲线贵数倍（每步 4 次求值），变体每回合随机取样：
+    // 种类覆盖不减（跨回合轮换），单次决策的积分成本减半
     if (std::abs(dx) >= 1.6) {
-        add(make_ode_wave(dx, dy, origin.x(), amp * 0.5, 0.75));
-        add(make_ode_wave(dx, dy, origin.x(), amp * 0.8, 1.5));
-        add(make_ode_slope_step(dx, dy, origin.x(), amp * 0.4));
-        add(make_ode_slope_step(dx, dy, origin.x(), -amp * 0.4));
+        add(rng.chance(0.5) ? make_ode_wave(dx, dy, origin.x(), amp * 0.5, 0.75)
+                            : make_ode_wave(dx, dy, origin.x(), amp * 0.8, 1.5));
+        add(make_ode_slope_step(dx, dy, origin.x(), rng.chance(0.5) ? amp * 0.4 : -amp * 0.4));
     }
-    // 圆弧：起始方向相对瞄准方向偏几档，两侧都试
-    for (double dev : {-0.35, 0.35, -0.7, 0.7, -1.1, 1.1}) {
+    // 圆弧：起始方向偏一档，三档里每回合随机取一对（两侧都试）。Ode2 每条要积分
+    // 两个表达式、是生成阶段最贵的候选——六档全上单次决策多花二十多毫秒
+    const double dev = 0.35 + 0.35 * static_cast<double>(rng.range_int(0, 2));
+    for (const double s : {-dev, dev}) {
         CurveRequest req;
-        if (make_ode_arc(dx, dy, dev, req)) add(req);
+        if (make_ode_arc(dx, dy, s, req)) add(req);
     }
 }
 

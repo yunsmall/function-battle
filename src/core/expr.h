@@ -60,6 +60,10 @@ public:
 
     // 更新变量值；变量名必须是编译时注册过的，否则返回 false
     bool set_var(const std::string& name, double value);
+    // 变量存储的地址（编译成功且名字在 vars 里时必然非空；地址在表达式生命周期内
+    // 稳定）。采样热循环用它在循环外取一次、循环里直接写，省掉每步 set_var 的
+    // 哈希查找
+    double* var_ref(const std::string& name);
     // 求值（变量为最近一次 set_var 的值）
     double eval() const;
     // 求值并要求结果有限（NaN/Inf 视为失败），供曲线采样时跳过无效段

@@ -86,30 +86,6 @@ CurveRequest make_vee(bool horizontal, double dx, double dy, double offset) {
     return req;
 }
 
-// 阶梯：f(u) = a*u + A*floor(u/step_w)，每隔 step_w 抬升 A（垂直跳变）
-CurveRequest make_stairs(bool horizontal, double dx, double dy, double step_h, double step_w) {
-    const double t = horizontal ? dx : dy;
-    const double v = horizontal ? dy : dx;
-    CurveRequest req = base_axis_curve(horizontal, t);
-    const char* var = horizontal ? "x" : "y";
-    const double a = (v - step_h * std::floor(t / step_w)) / t;
-    req.expr_a = std::format("{}*{}+{}*floor({}/{})", num_text(a), var, num_text(step_h), var,
-                             num_text(step_w));
-    return req;
-}
-
-// 锯齿：f(u) = a*u + A*(u/w - floor(u/w))，齿宽 w，每齿爬升 A 后落回
-CurveRequest make_sawtooth(bool horizontal, double dx, double dy, double amp, double tooth_w) {
-    const double t = horizontal ? dx : dy;
-    const double v = horizontal ? dy : dx;
-    CurveRequest req = base_axis_curve(horizontal, t);
-    const char* var = horizontal ? "x" : "y";
-    const double a = (v - amp * (t / tooth_w - std::floor(t / tooth_w))) / t;
-    req.expr_a = std::format("{}*{}+{}*({}/{}-floor({}/{}))", num_text(a), var, num_text(amp), var,
-                             num_text(tooth_w), var, num_text(tooth_w));
-    return req;
-}
-
 // 波浪 + 折线混合：f(u) = m*u + A*sin(w*u) + b*(|u - t/2| - |t/2|)
 CurveRequest make_wave_vee(bool horizontal, double dx, double dy, double amp, double offset) {
     const double t = horizontal ? dx : dy;
@@ -123,22 +99,6 @@ CurveRequest make_wave_vee(bool horizontal, double dx, double dy, double amp, do
     req.expr_a = std::format("{}*{}+{}*sin({}*{})+{}*(abs({}-{})-{})", num_text(m), var,
                              num_text(amp), num_text(w), var, num_text(b), var, num_text(p),
                              num_text(std::abs(p)));
-    return req;
-}
-
-// 阶梯 + 正弦混合：f(u) = a*u + A*floor(u/step_w) + B*sin(w2*u)
-CurveRequest make_stairs_wave(bool horizontal, double dx, double dy, double step_h, double step_w,
-                              double amp) {
-    const double t = horizontal ? dx : dy;
-    const double v = horizontal ? dy : dx;
-    CurveRequest req = base_axis_curve(horizontal, t);
-    const char* var = horizontal ? "x" : "y";
-    const double w = 2.0 * std::numbers::pi * 0.75 / std::abs(t);
-    const double a =
-        (v - step_h * std::floor(t / step_w) - amp * std::sin(w * t)) / t;
-    req.expr_a = std::format("{}*{}+{}*floor({}/{})+{}*sin({}*{})", num_text(a), var,
-                             num_text(step_h), var, num_text(step_w), num_text(amp), num_text(w),
-                             var);
     return req;
 }
 
@@ -208,17 +168,80 @@ CurveRequest make_polar_wave(double dx, double dy, double swing, double n, doubl
 
 }  // namespace
 
+// ---------- 阶梯族（公开：单测直接验证可达性，历史上这里没有覆盖、错过 bug） ----------
+
+// 阶梯：f(u) = a*u + A*floor(u/step_w)，每隔 step_w 抬升 A（垂直跳变）
+CurveRequest make_stairs(bool horizontal, double dx, double dy, double step_h, double step_w) {
+    const double t = horizontal ? dx : dy;
+    const double v = horizontal ? dy : dx;
+    CurveRequest req = base_axis_curve(horizontal, t);
+    const char* var = horizontal ? "x" : "y";
+    const double a = (v - step_h * std::floor(t / step_w)) / t;
+    req.expr_a = std::format("{}*{}+{}*floor({}/{})", num_text(a), var, num_text(step_h), var,
+                             num_text(step_w));
+    return req;
+}
+
+// 锯齿：f(u) = a*u + A*(u/w - floor(u/w))，齿宽 w，每齿爬升 A 后落回
+CurveRequest make_sawtooth(bool horizontal, double dx, double dy, double amp, double tooth_w) {
+    const double t = horizontal ? dx : dy;
+    const double v = horizontal ? dy : dx;
+    CurveRequest req = base_axis_curve(horizontal, t);
+    const char* var = horizontal ? "x" : "y";
+    const double a = (v - amp * (t / tooth_w - std::floor(t / tooth_w))) / t;
+    req.expr_a = std::format("{}*{}+{}*({}/{}-floor({}/{}))", num_text(a), var, num_text(amp), var,
+                             num_text(tooth_w), var, num_text(tooth_w));
+    return req;
+}
+
+// 阶梯 + 正弦混合：f(u) = a*u + A*floor(u/step_w) + B*sin(w2*u)
+CurveRequest make_stairs_wave(bool horizontal, double dx, double dy, double step_h, double step_w,
+                              double amp) {
+    const double t = horizontal ? dx : dy;
+    const double v = horizontal ? dy : dx;
+    CurveRequest req = base_axis_curve(horizontal, t);
+    const char* var = horizontal ? "x" : "y";
+    const double w = 2.0 * std::numbers::pi * 0.75 / std::abs(t);
+    const double a = (v - step_h * std::floor(t / step_w) - amp * std::sin(w * t)) / t;
+    req.expr_a = std::format("{}*{}+{}*floor({}/{})+{}*sin({}*{})", num_text(a), var,
+                             num_text(step_h), var, num_text(step_w), num_text(amp), num_text(w),
+                             var);
+    return req;
+}
+
 // ---------- 评估与汇总生成 ----------
+
+CurveKind classify_curve(const CurveRequest& req) {
+    switch (req.mode) {
+        case CurveMode::Polar: return CurveKind::Polar;
+        case CurveMode::Parametric: return CurveKind::Parametric;
+        case CurveMode::Ode1: return CurveKind::Ode1;
+        case CurveMode::Ode2: return CurveKind::Ode2;
+        case CurveMode::Ypp: return CurveKind::Ypp;
+        default: break;
+    }
+    const auto has = [&req](const char* s) {
+        return req.expr_a.find(s) != std::string::npos || req.expr_b.find(s) != std::string::npos;
+    };
+    if (has("step(") || has("floor(")) return CurveKind::Stair;  // 阶梯/折线链/锯齿
+    if (has("abs(")) return CurveKind::Bend;
+    if (has("sin(") || has("cos(") || has("tan(")) return CurveKind::Wave;
+    return CurveKind::Poly;
+}
 
 CurveCandidate evaluate_candidate(const CurveRequest& req, const Vec2& origin, const Vec2& aim,
                                   const World& world) {
     CurveCandidate c;
     c.req = req;
+    c.kind = classify_curve(req);
     c.sampled = sample_curve(req, origin, world.config());
     if (!c.sampled.ok()) return c;
     const GameConfig& cfg = world.config();
     const double crater = cfg.world.crater_radius;
-    const double hit_r = cfg.world.player_half_size;
+    const double pr = cfg.world.projectile_radius;  // 炮弹的圆形碰撞体半径
+    const double hit_r = cfg.world.player_half_size + pr;
+    // 远障碍先剔掉（见 obstacles_near_path）：省掉逐子段×远障碍的 AABB 拒绝开销
+    const std::vector<size_t> near_obs = obstacles_near_path(c.sampled.path, world);
     // 按飞行顺序评估（与 step_flight 同粒度、同次序——命中结算先于撞墙）：只按
     // "几何上经过瞄准点"判 reach，会把"先撞墙"的曲线也算成打得到，AI 于是会挑
     // 出实际半路炸掉的线——看起来就是"不会绕障碍、明知有墙硬撞"
@@ -226,32 +249,55 @@ CurveCandidate evaluate_candidate(const CurveRequest& req, const Vec2& origin, c
     bool hit = false;      // 撞墙之前碰到了瞄准点
     bool blocked = false;  // 途中有遮挡物（命中点之后撞的也算，clear 用）
     const Path& path = c.sampled.path;
-    for (size_t i = 0; i + 1 < path.points.size() && !blocked; ++i) {
+    // 出界宽限：与 step_flight 同构——连续出界的弧长累计超过 speed×宽限秒才算炮弹
+    // 销毁，销毁后的点不再结算；"出界兜回来"航段的障碍照常判。以前这里遇到出界就
+    // 直接截断判定，把"兜回来撞墙"的线误判成干净弹道（回归测试抓到过 11/60 不一致）
+    double out_arc = 0.0;
+    bool dead = false;
+    // 子段的起点：与 step_flight 一样以段为单位做连续求交（起点 = 炮口位置）
+    Vec2 prev = path.points.front();
+    for (size_t i = 0; i + 1 < path.points.size() && !blocked && !dead; ++i) {
         const Vec2& a = path.points[i];
         const Vec2& b = path.points[i + 1];
-        // step 跳变这类相邻顶点可以相距极远，细分到飞行步长粒度才能不漏障碍
-        const size_t n = std::max<size_t>(
-            1, static_cast<size_t>(std::ceil((b - a).norm() / kAiFlightStep)));
+        // step 跳变这类相邻顶点可以相距极远，细分到飞行步长粒度：出界宽限按弧长
+        // 累计，步长要贴近飞行；碰撞本身是段判定，不再依赖采样相位
+        const double seg_len = (b - a).norm();
+        const size_t n =
+            std::max<size_t>(1, static_cast<size_t>(std::ceil(seg_len / kAiFlightStep)));
+        const double sub_len = seg_len / static_cast<double>(n);
         for (size_t s = 1; s <= n; ++s) {
             const double t = static_cast<double>(s) / static_cast<double>(n);
             const Vec2 p(a.x() + (b.x() - a.x()) * t, a.y() + (b.y() - a.y()) * t);
-            const double d = distance(p, aim);
-            gap = std::min(gap, d);
-            if (d <= hit_r) hit = true;
-            // 同一步内命中先于撞墙（与 step_flight 的结算次序一致）
-            for (const auto& ob : world.obstacles()) {
-                if (obstacle_blocks(ob, p, crater)) {
-                    blocked = true;
-                    break;
+            // 与 step_flight 同构的连续判定：子段对所有障碍求交，取最小撞墙参数
+            double t_wall = 2.0;
+            for (const size_t k : near_obs) {
+                if (const auto tw =
+                        segment_hits_obstacle(world.obstacles()[k], prev, p, crater, pr)) {
+                    t_wall = std::min(t_wall, *tw);
                 }
             }
-            if (blocked) break;
-            // 采样会保留少量出界段（给"绕回来"留的宽限），AI 评估按严格地图边界
-            // 截断：只评估可见段，保守但不出错
-            if (p.x() < cfg.world.map_x_min || p.x() > cfg.world.map_x_max ||
-                p.y() < cfg.world.map_y_min || p.y() > cfg.world.map_y_max) {
+            // 命中判定用"子段到瞄准点的距离"：掠过也算命中；且命中点要在几何上
+            // 先于撞墙（最近点落在墙后、墙前只是擦进圈内的罕见几何会保守漏判，
+            // 方向安全：少认一条可疑线，不会凭空多认）
+            const double d = point_segment_distance(aim, prev, p);
+            gap = std::min(gap, d);
+            if (d <= hit_r && point_segment_t(aim, prev, p) <= t_wall) hit = true;
+            if (t_wall <= 1.0) {
+                blocked = true;
                 break;
             }
+            const bool in_map = p.x() >= cfg.world.map_x_min && p.x() <= cfg.world.map_x_max &&
+                                p.y() >= cfg.world.map_y_min && p.y() <= cfg.world.map_y_max;
+            if (!in_map) {
+                out_arc += sub_len;
+                if (out_arc > cfg.world.projectile_speed * kOutGraceSec) {
+                    dead = true;  // 出界超时销毁（不是撞墙）：后续点与飞行一样不可达
+                    break;
+                }
+            } else {
+                out_arc = 0.0;
+            }
+            prev = p;
         }
     }
     c.aim_gap = gap;
@@ -259,6 +305,7 @@ CurveCandidate evaluate_candidate(const CurveRequest& req, const Vec2& origin, c
     // clear：命中且全程（含命中点之后）不撞遮挡物——打完后也不炸墙的干净弹道，
     // 择优时优先；"先撞墙"的曲线 reaches 已为 false，不会靠 clear 复活
     c.clear = hit && !blocked;
+    c.blocked = blocked;
     return c;
 }
 
@@ -471,6 +518,45 @@ bool make_poly_wave3_through(bool horizontal, const Vec2& p1, const Vec2& p2, co
     return true;
 }
 
+bool make_wave3_through(bool horizontal, const Vec2& p1, const Vec2& p2, const Vec2& p3, double w,
+                        CurveRequest& out) {
+    const double t1 = horizontal ? p1.x() : p1.y();
+    const double v1 = horizontal ? p1.y() : p1.x();
+    const double t2 = horizontal ? p2.x() : p2.y();
+    const double v2 = horizontal ? p2.y() : p2.x();
+    const double t3 = horizontal ? p3.x() : p3.y();
+    const double v3 = horizontal ? p3.y() : p3.x();
+    const double s1 = std::sin(w * t1);
+    const double s2 = std::sin(w * t2);
+    const double s3 = std::sin(w * t3);
+    const double q1 = std::sin(2.0 * w * t1);
+    const double q2 = std::sin(2.0 * w * t2);
+    const double q3 = std::sin(2.0 * w * t3);
+    // 三元一次方程组：a*t + b*sin(w*t) + c*sin(2*w*t) = v（三个点三条方程），克拉默法则。
+    // 阈值按行列式的尺度缩放（与 make_wave_through 同风格）：固定绝对阈值会放病态
+    // 解过关、再靠限幅兜底，浪费一次编译/评估
+    const double det =
+        t1 * (s2 * q3 - s3 * q2) - s1 * (t2 * q3 - t3 * q2) + q1 * (t2 * s3 - t3 * s2);
+    if (std::abs(det) < 1e-9 * (std::abs(t1 * t2 * t3) + 1.0)) return false;
+    const double det_a =
+        v1 * (s2 * q3 - s3 * q2) - s1 * (v2 * q3 - v3 * q2) + q1 * (v2 * s3 - v3 * s2);
+    const double det_b =
+        t1 * (v2 * q3 - v3 * q2) - v1 * (t2 * q3 - t3 * q2) + q1 * (t2 * v3 - t3 * v2);
+    const double det_c =
+        t1 * (s2 * v3 - s3 * v2) - s1 * (t2 * v3 - t3 * v2) + v1 * (t2 * s3 - t3 * s2);
+    const double a = det_a / det;
+    const double b = det_b / det;
+    const double c = det_c / det;
+    // 系数离谱（形状飞出地图）时不值得评估
+    if (std::abs(a) > 50.0 || std::abs(b) > 60.0 || std::abs(c) > 60.0) return false;
+    CurveRequest req = base_axis_curve(horizontal, t1);
+    const char* var = horizontal ? "x" : "y";
+    req.expr_a = std::format("{}*{}+{}*sin({}*{})+{}*sin({}*{})", num_text(a), var, num_text(b),
+                             num_text(w), var, num_text(c), num_text(2.0 * w), var);
+    out = req;
+    return true;
+}
+
 CurveRequest make_ypp(double dx, double dy, double offset) {
     // 过瞄准点的抛物线 y(u) = a*u^2 + k*u（u 是沿行进方向的位移，t = |dx|）
     // 等价于 y'' = 2a、y'(0) = k；ypp 模式用发射角表达初斜率，取 atan(k)
@@ -499,15 +585,16 @@ std::vector<CurveCandidate> generate_candidates(bool horizontal, double dx, doub
         out.push_back(evaluate_candidate(req, origin, aim, world));
     };
 
-    // 直线与抛物线：任何难度都生成（直线还是最终兜底）
+    // 直线与抛物线：任何难度都生成（直线还是最终兜底）。正负拱二选一：多项式家族
+    // 恒在候选池里容易在择优时"以量取胜"（评测里占掉一半出手），少一条也省一次编译
     add(make_parabola(horizontal, dx, dy, 0.0));
-    add(make_parabola(horizontal, dx, dy, amp));
-    add(make_parabola(horizontal, dx, dy, -amp));
-    // 二阶微分方程 y'' = 常值：与抛物线同族的"发射角"表达，只沿 x 展开
+    add(make_parabola(horizontal, dx, dy, rng.chance(0.5) ? amp : -amp));
+    // 二阶微分方程 y'' = 常值：与抛物线同族的"发射角"表达，只沿 x 展开。
+    // 正负拱二选一——每条候选都要一次 ExprTk 编译（~0.6ms，单次决策的绝对大头），
+    // 同族变体每回合随机取样、跨回合轮换：种类覆盖不减，成本减半
     if (horizontal) {
         add(make_ypp(dx, dy, 0.0));
-        add(make_ypp(dx, dy, amp));
-        add(make_ypp(dx, dy, -amp));
+        add(make_ypp(dx, dy, rng.chance(0.5) ? amp : -amp));
     }
     // 直线被障碍挡住时，按"挡路障碍的高度"精确起拱：两侧各一条大拱抛物线。
     // 拱高不是拍脑袋的档位（±amp 的覆盖面有限、高障碍绕不过去），而是过障碍
@@ -529,29 +616,35 @@ std::vector<CurveCandidate> generate_candidates(bool horizontal, double dx, doub
     }
     if (difficulty == 0) return out;  // 简单难度只玩这些基础形状
 
-    // 与主向相关的形状：主向太短时频率参数会病态，直接跳过
+    // 与主向相关的形状：主向太短时频率参数会病态，直接跳过。
+    // 各族的多个变体每回合随机取一个子集（注释见上面 ypp 处）：单次决策要评估
+    // 40+ 条曲线（每条一次编译）会到 45ms 量级，随机子集把成本砍掉四成左右
     if (std::abs(t) >= 1.6) {
-        add(make_trig(horizontal, dx, dy, amp * 0.6, 0.75));
-        add(make_trig(horizontal, dx, dy, amp * 0.9, 1.25));
-        add(make_vee(horizontal, dx, dy, amp * 0.8));
-        add(make_vee(horizontal, dx, dy, -amp * 0.8));
-        add(make_stairs(horizontal, dx, dy, amp * 0.35, std::abs(t) / 4.0));
-        add(make_sawtooth(horizontal, dx, dy, amp * 0.5, std::abs(t) / 3.0));
-        add(make_wave_vee(horizontal, dx, dy, amp * 0.6, amp * 0.6));
-        add(make_stairs_wave(horizontal, dx, dy, amp * 0.3, std::abs(t) / 4.0, amp * 0.4));
+        const bool trig_hi = rng.chance(0.5);
+        add(trig_hi ? make_trig(horizontal, dx, dy, amp * 0.9, 1.25)
+                    : make_trig(horizontal, dx, dy, amp * 0.6, 0.75));
+        add(make_vee(horizontal, dx, dy, rng.chance(0.5) ? amp * 0.8 : -amp * 0.8));
+        // 阶梯族四条取两条（两两组合随机）
+        CurveRequest sa = make_stairs(horizontal, dx, dy, amp * 0.35, std::abs(t) / 4.0);
+        CurveRequest sb = make_sawtooth(horizontal, dx, dy, amp * 0.5, std::abs(t) / 3.0);
+        CurveRequest sc = make_wave_vee(horizontal, dx, dy, amp * 0.6, amp * 0.6);
+        CurveRequest sd = make_stairs_wave(horizontal, dx, dy, amp * 0.3, std::abs(t) / 4.0, amp * 0.4);
+        const int drop = rng.range_int(0, 3);
+        if (drop != 0) add(sa);
+        if (drop != 1) add(sb);
+        if (drop != 2) add(sc);
+        if (drop != 3) add(sd);
     }
 
     // 与主向无关的形状
     add(make_arc(dx, dy, amp));
-    add(make_arc(dx, dy, -amp));
-    add(make_arc(dx, dy, 2.0 * amp));
+    add(make_arc(dx, dy, rng.chance(0.5) ? -amp : 2.0 * amp));
     add(make_arc_wave(dx, dy, amp, amp * 0.4));
     // 阿基米德螺线：目标几乎正右侧时 theta_aim ≈ 0，螺线退化成朝外直线，跳过。
     // 阈值不必再放大（实测：|θ|≤0.005 时采样本身失败、丢弃成本只有一次微秒级
     // 评估；θ≈0.05 起是能命中的有效候选，若放大到该值会误伤中间区间）
     if (std::abs(std::atan2(dy, dx)) > 1e-3) {
-        add(make_polar(dx, dy, 0.4));
-        add(make_polar(dx, dy, 0.9));
+        add(rng.chance(0.5) ? make_polar(dx, dy, 0.4) : make_polar(dx, dy, 0.9));
         add(make_polar_wave(dx, dy, amp * 0.5, 2.0, 0.6));
     }
 
@@ -560,8 +653,41 @@ std::vector<CurveCandidate> generate_candidates(bool horizontal, double dx, doub
     return out;
 }
 
+std::vector<size_t> obstacles_near_path(const Path& path, const World& world) {
+    std::vector<size_t> near_list;
+    if (path.points.empty()) return near_list;
+    double min_x = path.points[0].x(), max_x = min_x;
+    double min_y = path.points[0].y(), max_y = min_y;
+    for (const auto& p : path.points) {
+        min_x = std::min(min_x, p.x());
+        max_x = std::max(max_x, p.x());
+        min_y = std::min(min_y, p.y());
+        max_y = std::max(max_y, p.y());
+    }
+    const double pr = world.config().world.projectile_radius;
+    const auto& obs = world.obstacles();
+    near_list.reserve(obs.size());
+    for (size_t k = 0; k < obs.size(); ++k) {
+        const Obstacle& ob = obs[k];
+        const double ex = (ob.is_circle ? ob.radius : ob.half_w) + pr;
+        const double ey = (ob.is_circle ? ob.radius : ob.half_h) + pr;
+        // 判据与 segment_hits_obstacle 的首步 AABB 预筛逐条一致（同为"无重叠即拒"）
+        if (max_x < ob.center.x() - ex || min_x > ob.center.x() + ex ||
+            max_y < ob.center.y() - ey || min_y > ob.center.y() + ey) {
+            continue;
+        }
+        near_list.push_back(k);
+    }
+    return near_list;
+}
+
 int first_blocking_obstacle(const Path& path, const World& world) {
+    if (path.points.empty()) return -1;
     const double crater = world.config().world.crater_radius;
+    const double pr = world.config().world.projectile_radius;
+    const std::vector<size_t> near_obs = obstacles_near_path(path, world);
+    // 子段连续求交（与 step_flight 同构）：沿途第一个真正撞上的障碍
+    Vec2 prev = path.points.front();
     for (size_t i = 0; i + 1 < path.points.size(); ++i) {
         const Vec2& a = path.points[i];
         const Vec2& b = path.points[i + 1];
@@ -570,11 +696,12 @@ int first_blocking_obstacle(const Path& path, const World& world) {
         for (size_t s = 1; s <= n; ++s) {
             const double t = static_cast<double>(s) / static_cast<double>(n);
             const Vec2 p(a.x() + (b.x() - a.x()) * t, a.y() + (b.y() - a.y()) * t);
-            for (size_t k = 0; k < world.obstacles().size(); ++k) {
-                if (obstacle_blocks(world.obstacles()[k], p, crater)) {
+            for (const size_t k : near_obs) {
+                if (segment_hits_obstacle(world.obstacles()[k], prev, p, crater, pr)) {
                     return static_cast<int>(k);
                 }
             }
+            prev = p;
         }
     }
     return -1;

@@ -73,6 +73,28 @@ bool obstacle_blocks(const Obstacle& ob, const Vec2& p, double crater_radius);
 // 遮挡物是否与一个圆（炮弹爆炸范围）相交——爆炸点周围的所有障碍都要被炸出坑
 bool obstacle_overlaps_circle(const Obstacle& ob, const Vec2& center, double radius);
 
+// 线段 a→b 与障碍实体的首个相交参数 t ∈ [0,1]（炮弹在 t 处撞上实体）；无交返回空。
+// 炮弹是半径 projectile_radius 的圆（球心沿段 a→b 运动）：判定按 Minkowski 膨胀——
+// 圆障碍的判定半径加 r、矩形的判定半宽各加 r（方角处圆角膨胀被近似成直角，
+// 判定在角部略宽一点点）。形状内被坑挖掉的部分不算实体（与 obstacle_blocks 的
+// 坑豁免同语义；炮弹半径给坑豁免带来的狭窄边带忽略不计）。
+// 连续求交取代"每步取点判定"：点判定会因采样相位漏掉擦边（从形状角上掠过），
+// 撞上也总滞后半个采样步（炮弹先穿进障碍再被发现）；段判定两者都消除，
+// 且飞行与 AI 评估共用同一函数，两边的结论严格一致
+std::optional<double> segment_hits_obstacle(const Obstacle& ob, const Vec2& a, const Vec2& b,
+                                            double crater_radius, double projectile_radius);
+
+// 线段 a→b 与以 center 为中心、半宽 half 的轴对齐方块（士兵命中框）的首个相交参数
+// （判定半宽含炮弹半径，方角膨胀的近似同上）；无交返回空。士兵没有坑豁免
+std::optional<double> segment_hits_square(const Vec2& a, const Vec2& b, const Vec2& center,
+                                          double half, double projectile_radius);
+
+// 出界宽限（秒）：炮弹飞出地图后不立即销毁，给"绕回来"留时间窗——曲线弹道可以
+// 飞出地图再绕回（高抛越顶、大弧线兜回），一出界就杀会误伤这类合法弹道。
+// 匀速运动下时间宽限等价于弧长宽限（速度×秒）。AI 评估要与飞行同构地模拟它
+// （见 ai_curves.cpp 的 evaluate_candidate），所以放公用头
+inline constexpr double kOutGraceSec = 3.0;
+
 struct Projectile {
     int id = 0;
     int owner_id = 0;
@@ -81,6 +103,9 @@ struct Projectile {
     Path path;
     double speed = 0.0;
     double travel = 0.0;  // 已行进弧长
+    // 上一判定子步的位置（段判定的起点）。必须跨帧持久：step_flight 每帧调用一次，
+    // 若用局部变量会每帧从炮口重来，把整段已飞轨迹当成一条直线段去判定
+    Vec2 last_pos;
     // 已结算过伤害的士兵（key = player_id * 16 + soldier；穿透时每个士兵只结算一次）
     std::vector<long> hit_soldiers;
     bool armed = false;  // 炮口保护是否已解除（解除前发射者本人免疫本弹）

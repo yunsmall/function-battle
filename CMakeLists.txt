@@ -16,6 +16,17 @@ if(MSVC)
     add_compile_options(/utf-8 /bigobj)
 endif()
 
+# 跨 TU 内联：AI 评估链的热点（段判定、表达式求值）跨 world.cpp/ai.cpp/curve.cpp
+# 调用，评测吞吐敏感。链接器是 lld-link，原生支持 LTO；不开 fast-math，浮点结果
+# 与逐 TU 编译保持一致（同种子对局逐字段回归验证过）
+include(CheckIPOSupported)
+check_ipo_supported(RESULT FG_IPO_OK OUTPUT FG_IPO_ERR)
+if(FG_IPO_OK)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+else()
+    message(WARNING "编译器/链接器不支持 LTO，跳过：${FG_IPO_ERR}")
+endif()
+
 add_subdirectory(src)
 
 # ---------- 安装与打包（zip 发布） ----------
