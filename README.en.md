@@ -128,7 +128,7 @@ assets sit in one directory — the server locates its web files relative to the
 executable, so the unzipped package runs from anywhere.
 
 Outputs: `build/src/server/fb_server.exe`, `build/src/client/fb_client.exe`,
-`build/src/tests/fb_tests.exe`.
+`build/src/tests/fb_tests.exe`, `build/src/tools/fb_play.exe`.
 
 ## Running
 

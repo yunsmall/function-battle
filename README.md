@@ -99,7 +99,7 @@ Linux 上不需要图形客户端（raylib 预编译包仅 Windows），加 `-DF
 只构建核心、服务器与测试。
 
 产物：`build/src/server/fb_server.exe`、`build/src/client/fb_client.exe`、
-`build/src/tests/fb_tests.exe`。
+`build/src/tests/fb_tests.exe`、`build/src/tools/fb_play.exe`。
 
 ### 打包发布（zip）
 
