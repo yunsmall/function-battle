@@ -33,6 +33,15 @@ bool box_accepts_char(const TextBox& box, int cp) {
 }
 }  // namespace
 
+// 按字节前进到下一个 UTF-8 字符起点（中文整字跳跃）；供输入与点击定位共用
+static size_t utf8_next_boundary(const std::string& s, size_t i) {
+    const size_t n = s.size();
+    if (i >= n) return n;
+    ++i;
+    while (i < n && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) ++i;
+    return i;
+}
+
 void TextBox::handle_input() {
     // 失焦期间光标归位到尾部：重新聚焦时从文本末尾继续输入
     //（点框内任意处定位光标暂不提供，点击只负责聚焦）
@@ -53,13 +62,7 @@ void TextBox::handle_input() {
         while (i > 0 && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) --i;
         return i;
     };
-    auto next_boundary = [&](size_t i) {
-        const size_t n = text.size();
-        if (i >= n) return n;
-        ++i;
-        while (i < n && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) ++i;
-        return i;
-    };
+    auto next_boundary = [&](size_t i) { return utf8_next_boundary(text, i); };
     // 当前选择（anchor 与 cursor 的区间，恒为字符边界）；anchor == cursor 即无选择
     const size_t sel_lo = std::min(anchor, cursor);
     const size_t sel_hi = std::max(anchor, cursor);
@@ -215,22 +218,13 @@ bool App::ui_button(Rectangle r, const std::string& label, bool selected, bool e
 // 圆角输入框：聚焦时边框发光
 void App::ui_textbox(TextBox& box, Rectangle r, const std::string& hint, bool enabled) {
     const bool hover = CheckCollisionPointRec(GetMousePosition(), r);
-    // 禁用（如非房主看"固定种子"框）：不可点击聚焦。输入框本就"拿到焦点才吃键"，
-    // 点不进即可，无需在输入处另行拦截
-    if (enabled && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !help_modal_active()) {
-        ui_click_consumed_ = true;
-        // 点击任意处先取消全部焦点，再聚焦本框（漏掉任何一个都会令两个框同时吃键盘）
-        clear_text_focus();
-        box.focused = true;
-    }
-    const Color border =
-        box.focused ? kAccent : (hover ? ColorLerp(kPanelBorder, kTextMain, 0.3f) : kPanelBorder);
-    DrawRectangleRounded(r, 0.28f, 8, kInputBg);
-    DrawRectangleRoundedLines(r, 0.28f, 8, border);
-
     const std::string shown = box.text.empty() ? hint : box.text;
-    const Color c = box.text.empty() ? kTextFaint : kTextMain;
     const float fs = 19.0f;
+    // 布局一律按"档位实际绘制字号"算（pick_tier_font 命中的档位可能与请求差一两像素）；
+    // 文本/滚动/光标的坐标全部取整到像素——亚像素位置会让字形在重建图集或
+    // 输入刷新时出现整行上下抖动（"字符一上一下飘"）
+    const float tier_fs = pick_tier_font(&fonts_, fs).second;
+    const float text_y = std::floor(r.y + (r.height - tier_fs) * 0.5f);
     // 滚动显示跟随光标：光标越过右缘时文本左移，回到左半区即恢复左侧显示
     //（无状态的简化滚动：文本短于视宽时永不滚动）
     const size_t cur = std::min(box.cursor, shown.size());
@@ -238,6 +232,36 @@ void App::ui_textbox(TextBox& box, Rectangle r, const std::string& hint, bool en
     const float limit = r.width - 20.0f;
     float x = r.x + 10.0f;
     if (cursor_w > limit) x -= (cursor_w - limit);
+    // 禁用（如非房主看"固定种子"框）：不可点击聚焦。输入框本就"拿到焦点才吃键"，
+    // 点不进即可，无需在输入处另行拦截
+    if (enabled && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !help_modal_active()) {
+        ui_click_consumed_ = true;
+        // 点击任意处先取消全部焦点，再聚焦本框（漏掉任何一个都会令两个框同时吃键盘）
+        clear_text_focus();
+        box.focused = true;
+        // 点击定位光标：按点击处到滚动后文本左缘的距离逐字符折算（表达式含中英文，
+        // 不能按等宽估算）。用点击前的滚动位置做映射，定位后下一帧滚动自然校正
+        if (!box.text.empty()) {
+            const float local = GetMousePosition().x - x;
+            size_t idx = 0;
+            float acc = 0.0f;
+            while (idx < box.text.size()) {
+                const size_t nb = utf8_next_boundary(box.text, idx);
+                const float w = text_width(box.text.substr(idx, nb - idx), fs);
+                if (local < acc + w * 0.5f) break;  // 落在字符左半：光标在该字符前
+                acc += w;
+                idx = nb;
+            }
+            box.cursor = idx;
+            box.anchor = idx;
+        }
+    }
+    const Color border =
+        box.focused ? kAccent : (hover ? ColorLerp(kPanelBorder, kTextMain, 0.3f) : kPanelBorder);
+    DrawRectangleRounded(r, 0.28f, 8, kInputBg);
+    DrawRectangleRoundedLines(r, 0.28f, 8, border);
+    const Color c = box.text.empty() ? kTextFaint : kTextMain;
+    const float tx = std::floor(x);
     BeginScissorMode(static_cast<int>(r.x + 4), static_cast<int>(r.y),
                      static_cast<int>(r.width - 8), static_cast<int>(r.height));
     // 选择高亮（Ctrl+A 全选后可见）：垫在文字下层；无选择时不画
@@ -246,14 +270,14 @@ void App::ui_textbox(TextBox& box, Rectangle r, const std::string& hint, bool en
         const size_t hi = std::min(std::max(box.anchor, box.cursor), shown.size());
         const float w1 = text_width(shown.substr(0, lo), fs);
         const float w2 = text_width(shown.substr(0, hi), fs);
-        DrawRectangle(static_cast<int>(x + w1), static_cast<int>(r.y + 5),
+        DrawRectangle(static_cast<int>(tx + w1), static_cast<int>(r.y + 5),
                       static_cast<int>(w2 - w1), static_cast<int>(r.height - 10),
                       Fade(kAccent, 0.35f));
     }
-    text(shown, x, r.y + (r.height - fs) * 0.5f - 1.0f, fs, c);
+    text(shown, tx, text_y, fs, c);
     // 光标画在字符边界处（hint 灰字期间光标停在起点——空文本的真实光标不在提示字后面）
     if (box.focused && std::fmod(GetTime(), 1.0) < 0.5) {
-        const float cx = x + cursor_w + 1.0f;
+        const float cx = tx + cursor_w + 1.0f;
         DrawRectangle(static_cast<int>(cx), static_cast<int>(r.y + 7), 2,
                       static_cast<int>(r.height - 14), kAccent);
     }

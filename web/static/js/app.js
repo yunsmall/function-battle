@@ -497,6 +497,9 @@
             fx: [],           // 战斗特效条目（环/粒子，纯视觉；spawn_* 生成、render.js 的 drawFx 现算现画）
             banner: null,     // 回合横幅（turn_begin 时置位，显示 1.6 秒）
             lastFunc: {},     // 各玩家"最近用过的函数"文本（shot 时记录，新开局清空）
+            // 当前输入者的"正在写"实时文本（function_preview 更新、turn_begin 清空）：
+            // 画在名字牌下方一行、金色，优先于 lastFunc——对齐 C++ 的 writing 文本
+            previewText: '',
             preview: null,   // 服务器代算的输入预览（curve_preview 返回的轨迹）
             previewAt: 0,    // 上次请求预览的时刻（客户端节流，与服务端 1 秒限频对齐）
             previewSentAt: 0, // 最近一次真正发出预览请求的时刻（识别并丢弃作废/迟到的响应）
@@ -529,7 +532,6 @@
         $('input-bar').classList.toggle('hidden', me === null);
         $('turn-banner').textContent = me === null ? t('spectating') : t('waiting_move');
         $('countdown').textContent = '';
-        $('typing').textContent = '';
         updateInputState();
         if (rejoin) log('<span class="dim">' + esc(t('ev_new_game')) + '</span>');
         showScreen('battle');
@@ -607,7 +609,7 @@
         b.projectileS = 0;
         b.preview = null;      // 上一回合的预览线不残留
         b.previewSentAt = 0;   // 上一回合还在飞的预览响应就此作废（见 curve_preview 处理）
-        $('typing').textContent = '';  // 上一轮的"正在写"不残留下回合（对齐 C++ turn_begin 的清空）
+        b.previewText = '';    // 上一轮的"正在写"不残留下回合（对齐 C++ turn_begin 的清空）
         S.lastPreviewText = '';        // 允许新回合用相同文本时重新广播（对齐 C++ 的清空）
         log(t('ev_turn', { name: nameHtml(m.player_id), s: m.soldier }));
         // "已提交"随新回合无条件结束（对齐 C++：turn_begin 里无条件复位 battle_.submitted）；
@@ -1087,6 +1089,7 @@
                 nextPlayer: turn.nextPlayer, nextSoldier: turn.nextSoldier,
             } : null,
             lastFunc: b.lastFunc,
+            previewText: b.previewText,
             previewPath: b.preview ? b.preview.path : null,
             projectilePath: b.shot ? b.shot.path : null,
             projectile: b.projectile,
@@ -1246,14 +1249,13 @@
 
         net.on('function_preview', function (m) {
             // 只认当前回合玩家的"正在写"（服务器已过滤，这里防消息在途换回合）；
-            // 自己的不显示（表达式就在输入框里，C++ 同）
+            // 自己的不显示（表达式就在输入框里，C++ 同）。文本挂到该玩家名下，
+            // 由渲染层画在他的名字牌下方（截断规则与 C++ 的 truncate 一致）
             if (m.member_id === S.myId) return;
             if (!S.battle || !S.battle.turn || m.member_id !== S.battle.turn.playerId) return;
-            var p = playerById(m.member_id);
-            var name = p ? p.name : '#' + m.member_id;
             // 显示保留到回合结束（turn_begin 时清空，与 C++ 一致），不设超时：
             // 对手停手思考时清掉会让等待方误以为对手已提交
-            $('typing').textContent = t('typing_fmt', { name: name }) + m.preview;
+            S.battle.previewText = t('typing_prefix') + truncateUtf8(m.preview, 48);
         });
 
         net.on('curve_preview', function (m) {

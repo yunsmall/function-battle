@@ -51,6 +51,9 @@ struct RenderScene {
     int next_soldier = 0;
     // 各玩家"最近用过的函数"（player id → 文本）：显示在名字牌下方（可空）
     const std::map<int, std::string>* last_func = nullptr;
+    // 当前输入者"正在写"的实时预览（null = 没有人在写）：挂在当前士兵的名字牌下，
+    // 优先级高于 last_func（正在写的才是"这时最该看的内容"，全桌人都看得见）
+    const std::string* preview_text = nullptr;
     const std::map<int, Font>* fonts = nullptr;  // 档位字体表（App::fonts_）；文字按最近档绘制
     const FxSystem* fx = nullptr;  // 战斗特效（命中/爆炸/碎裂）
     float time = 0.0f;        // 秒；呼吸光圈、预览虚线相位等动画

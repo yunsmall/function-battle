@@ -534,7 +534,7 @@
         // draw_player 的移植：方块半边长与命中判定同源（cfg.player_half_size）；
         // 名字只画一次，挂在第一个存活士兵头上（全灭后挂在第一个士兵的残骸处）
         function drawPlayer(T, halfWorld, p, isMe, isCurrent, curSoldier,
-                            isNext, nextSoldier, lastFn, time) {
+                            isNext, nextSoldier, lastFn, fnGold, time) {
             var half = T.scale * halfWorld;
             var anchor = null;
             for (var i = 0; i < p.soldiers.length; i++) {
@@ -585,28 +585,37 @@
                 }
             }
             if (anchor !== null) {
-                // 名字（带半透明底牌）+ 最近用过的函数（名字下方一行小字）
+                // 名字（带半透明底牌）+ 名字下方一行小字：本回合玩家这里是金色的
+                // "正在写"，其余玩家是灰色的"最近用过"（对齐 C++ render 的牌下文本）
                 var ac = T.toScreen(anchor.pos[0], anchor.pos[1]);
                 var fs = 14, fnFs = 12;
                 ctx.font = fs + 'px ' + FONT;
                 var mw = ctx.measureText(p.name).width;
                 var hasFn = !!lastFn;
+                var fnW = 0;
+                if (hasFn) {
+                    ctx.font = fnFs + 'px ' + FONT;
+                    fnW = ctx.measureText(lastFn).width;
+                }
                 var nx = ac.x - mw * 0.5;
                 var ny = ac.y - half - fs - 9 - (hasFn ? fnFs + 3 : 0);
                 if (anchor.alive) {
+                    // 底牌按较宽的一行撑开（"正在写"常比名字长），两行文字各自居中
                     var bh = fs + 5 + (hasFn ? fnFs + 4 : 0);
+                    var bw = Math.max(mw, fnW) + 10;
                     ctx.fillStyle = css(COL.namePlate);
                     ctx.beginPath();
-                    ctx.roundRect(nx - 5, ny - 2, mw + 10, bh, 5);
+                    ctx.roundRect(ac.x - bw * 0.5, ny - 2, bw, bh, 5);
                     ctx.fill();
                 }
+                // 量 fnW 时把字号改成了 12px（ctx.font 是可变状态），画名字前要换回来
+                ctx.font = fs + 'px ' + FONT;
                 ctx.fillStyle = css(anchor.alive ? COL.nameAlive : COL.nameDead);
                 ctx.fillText(p.name, nx, ny);
                 if (hasFn) {
                     ctx.font = fnFs + 'px ' + FONT;
-                    var fw = ctx.measureText(lastFn).width;
-                    ctx.fillStyle = css(COL.lastFunc);
-                    ctx.fillText(lastFn, ac.x - fw * 0.5, ny + fs + 2);
+                    ctx.fillStyle = css(fnGold ? COL.preview : COL.lastFunc);
+                    ctx.fillText(lastFn, ac.x - fnW * 0.5, ny + fs + 2);
                 }
             }
         }
@@ -697,12 +706,20 @@
             for (var pi = 0; pi < players.length; pi++) {
                 var p = players[pi];
                 var fn = scene.lastFunc ? scene.lastFunc[p.id] : null;
+                var fnGold = false;
+                // "正在写"（本回合玩家、且不是自己——自己的看输入框）：金色挂他牌下，
+                // 优先于"最近用过"；就在写的这一刻它才是最该被看见的内容
+                if (scene.previewText && turn !== null && p.id === turn.playerId &&
+                    p.id !== scene.myId) {
+                    fn = scene.previewText;
+                    fnGold = true;
+                }
                 drawPlayer(T, half, p, p.id === scene.myId,
                            turn !== null && p.id === turn.playerId,
                            turn !== null ? turn.soldier : -1,
                            turn !== null && p.id === turn.nextPlayer,
                            turn !== null ? turn.nextSoldier : -1,
-                           fn || null, scene.time);
+                           fn || null, fnGold, scene.time);
             }
             // 战斗特效（命中冲击环/爆炸/阵亡碎裂）：压在玩家之上、炮弹之下
             drawFx(T, scene.fx || [], scene.time);

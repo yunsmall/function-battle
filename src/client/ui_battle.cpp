@@ -204,6 +204,7 @@ void App::draw_battle() {
     scene.next_player = battle_.next_player;
     scene.next_soldier = battle_.next_soldier;
     scene.last_func = &battle_.last_func;
+    scene.preview_text = &battle_.preview_text;
     scene.fonts = &fonts_;
     scene.fx = &fx_;
     scene.time = static_cast<float>(GetTime());
@@ -360,18 +361,6 @@ void App::draw_battle() {
             ui_textbox(expr_b_, Rectangle{bottom.x + 740.0f, row_y, 470.0f, 40.0f}, "第二个表达式");
         }
         text(var_hint(mode), bottom.x + 20.0f, row_y + 46.0f, 15.0f, kTextFaint);
-        // 别人"正在写"的实时预览（自己的表达式就在输入框里，不重复显示）。
-        // 预览可能含中文标点（如参数方程的"，"），按字节截断要回退到 UTF-8 字符边界，
-        // 否则切出孤立续字节会让 raylib 解码出乱码
-        if (!battle_.preview_text.empty() && battle_.current_player != battle_.my_id) {
-            std::string pv = battle_.preview_text;
-            if (pv.size() > 64) {
-                size_t cut = 64;
-                while (cut > 0 && (static_cast<unsigned char>(pv[cut]) & 0xC0) == 0x80) --cut;
-                pv = pv.substr(0, cut) + "…";
-            }
-            text("正在写：" + pv, bottom.x + 540.0f, row_y + 44.0f, 15.0f, kGold);
-        }
 
         // 方向 / 参数范围 / 提交
         const float ctrl_y = bottom.y + 148.0f;

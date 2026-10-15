@@ -216,7 +216,6 @@ select option { background: var(--row-bg); }
 #turn-banner { font-size: 16px; font-weight: 600; }
 #countdown { font-size: 16px; }
 #attempts { font-size: 12px; }
-#typing { font-size: 12px; color: var(--gold); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
 #canvas-wrap { grid-area: canvas; position: relative; min-height: 0; }

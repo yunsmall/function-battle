@@ -95,7 +95,7 @@
             vote_skip: '跳过地图',
             vote_voted: '已投跳过',
             voting: '{n}/{total}',
-            typing_fmt: '{name} 正在写：',
+            typing_prefix: '正在写：',
             spectating: '观战中（只看不打）',
             leave_ingame_title: '对局进行中不能离开，打完这把再走',
             view_normal: '视角：常规',

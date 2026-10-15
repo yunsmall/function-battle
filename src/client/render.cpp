@@ -469,9 +469,17 @@ void draw_obstacles(const View& view, const std::vector<Obstacle>& obstacles,
     }
 }
 
+// 名字牌下方函数行的显示截断：按字节截取但回退到 UTF-8 字符边界（防孤立续字节乱码）
+std::string truncate_utf8(const std::string& s, size_t max_bytes) {
+    if (s.size() <= max_bytes) return s;
+    size_t cut = max_bytes;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+    return s.substr(0, cut) + "…";
+}
+
 void draw_player(const View& view, double half_size, const Player& p, bool is_me,
                  bool is_current, bool is_next, int next_soldier, const std::string* last_func,
-                 const std::map<int, Font>* fonts, float time) {
+                 const std::string* writing, const std::map<int, Font>* fonts, float time) {
     // 半边长与命中判定同源（cfg.world.player_half_size）：画得比判定大，玩家对着方块
     // "看起来会命中"的边缘瞄准却判打空，是每一发都在影响瞄准的显示错误
     const float half = static_cast<float>(view.scale * half_size);
@@ -522,24 +530,36 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
         }
     }
     if (anchor != nullptr) {
-        // 名字（带半透明底牌，避免压在网格上看不清）+ 最近用过的函数（名字下方一行小字）
+        // 名字（带半透明底牌，避免压在网格上看不清）+ 名字下方一行小字：当前输入者的
+        // "正在写"实时预览优先（金色——这张牌就是全场看他打字的地方），没有才回落到
+        // "最近用过的函数"（暗色）。底牌按名字/函数行里较宽的一行撑开，函数行不溢出
         const Vector2 c = view.to_screen(anchor->pos);
         const auto [font, fs] = pick_tier_font(fonts, 14.0f);
         const Vector2 m = MeasureTextEx(font, p.name.c_str(), fs, 1.0f);
-        const bool has_fn = (last_func != nullptr && !last_func->empty());
         const auto [fn_font, fn_fs] = pick_tier_font(fonts, 12.0f);
+        std::string line;
+        Color line_c = kTextDim;
+        if (writing != nullptr && !writing->empty()) {
+            line = "正在写：" + truncate_utf8(*writing, 48);
+            line_c = kGold;
+        } else if (last_func != nullptr && !last_func->empty()) {
+            line = *last_func;
+        }
+        const bool has_line = !line.empty();
+        const Vector2 lm = has_line ? MeasureTextEx(fn_font, line.c_str(), fn_fs, 1.0f)
+                                    : Vector2{0.0f, 0.0f};
+        const float box_w = std::max(m.x, lm.x) + 10.0f;
         const Vector2 np{c.x - m.x * 0.5f,
-                         c.y - half - fs - 9.0f - (has_fn ? fn_fs + 3.0f : 0.0f)};
+                         c.y - half - fs - 9.0f - (has_line ? fn_fs + 3.0f : 0.0f)};
         if (anchor->alive) {
-            const float box_h = fs + 5.0f + (has_fn ? fn_fs + 4.0f : 0.0f);
-            DrawRectangleRounded(Rectangle{np.x - 5.0f, np.y - 2.0f, m.x + 10.0f, box_h}, 0.5f, 5,
-                                 kPlateBg);
+            const float box_h = fs + 5.0f + (has_line ? fn_fs + 4.0f : 0.0f);
+            DrawRectangleRounded(Rectangle{c.x - box_w * 0.5f, np.y - 2.0f, box_w, box_h}, 0.5f,
+                                 5, kPlateBg);
         }
         DrawTextEx(font, p.name.c_str(), np, fs, 1.0f, anchor->alive ? kNameAlive : kNameDead);
-        if (has_fn) {
-            const Vector2 fm = MeasureTextEx(fn_font, last_func->c_str(), fn_fs, 1.0f);
-            DrawTextEx(fn_font, last_func->c_str(), Vector2{c.x - fm.x * 0.5f, np.y + fs + 2.0f},
-                       fn_fs, 1.0f, kTextDim);
+        if (has_line) {
+            DrawTextEx(fn_font, line.c_str(), Vector2{c.x - lm.x * 0.5f, np.y + fs + 2.0f}, fn_fs,
+                       1.0f, line_c);
         }
     }
 }
@@ -576,9 +596,15 @@ void draw_scene(const View& view, const RenderScene& scene) {
                 const auto it = scene.last_func->find(p.id);
                 if (it != scene.last_func->end()) fn = &it->second;
             }
+            // "正在写"预览只挂在当前出手的别人身上（自己的表达在输入框里，不重复）
+            const std::string* writing =
+                (p.id == scene.current_player && p.id != scene.my_id &&
+                 scene.preview_text != nullptr && !scene.preview_text->empty())
+                    ? scene.preview_text
+                    : nullptr;
             draw_player(view, scene.cfg->world.player_half_size, p, p.id == scene.my_id,
                         p.id == scene.current_player, p.id == scene.next_player,
-                        scene.next_soldier, fn, scene.fonts, scene.time);
+                        scene.next_soldier, fn, writing, scene.fonts, scene.time);
         }
     }
     // 战斗特效（命中冲击环/爆炸/碎裂）：压在玩家之上、炮弹之下
