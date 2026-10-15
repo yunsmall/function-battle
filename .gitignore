@@ -11,6 +11,10 @@ review/
 __pycache__/
 *.pyc
 
+# 调参运行产物（日志与续跑状态；ai_tune_result.json 是结论、要进库）
+scripts/ai_tune.log
+scripts/ai_tune_resume.json
+
 # 对局信箱运行时文件（fg_play.py 自己生成）
 scripts/session/
 
