@@ -126,6 +126,93 @@ std::string jitter_numbers(const std::string& s, Rng& rng) {
     return out;
 }
 
+// 表达式里的数字参数序列（与 jitter_numbers 同一套词法：连续的数字/小数点算一个数）。
+// 供 is_repeat_of 比较两条式子的"参数向量"——结构（数字个数）不同直接判不同
+std::vector<double> number_params(const std::string& s) {
+    std::vector<double> out;
+    size_t i = 0;
+    while (i < s.size()) {
+        const char c = s[i];
+        const bool digit = std::isdigit(static_cast<unsigned char>(c)) != 0;
+        const bool dot_number =
+            (c == '.' && i + 1 < s.size() &&
+             std::isdigit(static_cast<unsigned char>(s[i + 1])) != 0);
+        if (digit || dot_number) {
+            size_t j = i;
+            while (j < s.size() &&
+                   (std::isdigit(static_cast<unsigned char>(s[j])) != 0 || s[j] == '.')) {
+                ++j;
+            }
+            out.push_back(std::atof(s.substr(i, j - i).c_str()));
+            i = j;
+        } else {
+            ++i;
+        }
+    }
+    return out;
+}
+
+// 表达式的"结构串"：数字字面量整段替换成 '#'、其余字符原样保留（与 number_params
+// 同一套词法）。两条式子要谈"数字级近似"，结构必须一致——只比数字的话，
+// sin(2*x) 与 2*sin(x)、+0.5*x 与 -0.5*x 这类数字相同、弹道完全不同的式子
+// 会被误判成同一发，把本该保留的候选错误剔掉
+std::string expr_shape(const std::string& s) {
+    std::string out;
+    size_t i = 0;
+    while (i < s.size()) {
+        const char c = s[i];
+        const bool digit = std::isdigit(static_cast<unsigned char>(c)) != 0;
+        const bool dot_number =
+            (c == '.' && i + 1 < s.size() &&
+             std::isdigit(static_cast<unsigned char>(s[i + 1])) != 0);
+        if (digit || dot_number) {
+            while (i < s.size() &&
+                   (std::isdigit(static_cast<unsigned char>(s[i])) != 0 || s[i] == '.')) {
+                ++i;
+            }
+            out += '#';
+        } else {
+            out += c;
+            ++i;
+        }
+    }
+    return out;
+}
+
+// 两段的数字参数是否逐个对得上：结构串一致（数字之外逐字相同），且个数相同、
+// 每个参数落在 12% 相对误差（加 0.02 绝对容差兜零附近的参数）内。12% 罩得住
+// jitter_numbers 的 ±10% 扰动——AI 微调上一发的变体也算"重复"
+bool expr_repeats(const std::string& a, const std::string& b) {
+    if (a.empty() != b.empty()) return false;
+    if (a.empty()) return true;  // 都空：这一半没有约束，视为相同
+    if (expr_shape(a) != expr_shape(b)) return false;
+    const auto va = number_params(a);
+    const auto vb = number_params(b);
+    if (va.size() != vb.size()) return false;
+    for (size_t i = 0; i < va.size(); ++i) {
+        if (std::abs(va[i] - vb[i]) >
+            0.12 * std::max(std::abs(va[i]), std::abs(vb[i])) + 0.02) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// （is_repeat_of 的定义在文件尾部：测试要直接验证判定边界，放匿名 namespace 之外）
+
+// 出手多样性：同档候选里与上一发"数字级近似"的优先剔掉（同命中档的多条线本来就
+// 等效，换一条只有观感收益）；剔完为空说明那条线是唯一解，原样保留——不为了躲
+// 复读牺牲强度。局面停滞时（上发命中、对方只是掉血）AI 每回合会重算出一模一样的
+// 线，连着出手看起来像卡带——这道过滤就是给那种局面准备的
+template <typename T>
+void drop_repeats_of_prev(std::vector<const T*>& cands, const CurveRequest& prev) {
+    std::vector<const T*> fresh;
+    for (const T* c : cands) {
+        if (!is_repeat_of(c->req, prev)) fresh.push_back(c);
+    }
+    if (!fresh.empty()) cands = std::move(fresh);
+}
+
 // 统计路径扫过的士兵数：穿透机制下一条曲线会依次命中多个士兵，一发"扫射"
 // 的收益成倍。命中判定与 World 同构（士兵是轴对齐方块，用连续段求交判定，不是
 // 圆形——圆是方块的内切圆，会系统性漏算"擦过方块角点"的命中，让择优错过更好的
@@ -522,8 +609,10 @@ struct TargetRef {
 // 困难 AI 的规划主流程：枚举目标子集 → 各骨架构造/插值 → 评估 → 必要时加绕行点修正。
 // max_targets：单次规划取用的目标数上限（困难档收在 4 划出与大神的一发多穿差距；
 // 大神传敌人总数 = 不限——能一波全扫就全扫）
+// prev：上一回合的出手（出手多样性过滤用，见 drop_repeats_of_prev；首回合为 null）
 Plan plan_hard(const World& world, const Player& self, const std::vector<TargetRef>& enemies,
-               const AiProfile& prof, size_t max_targets, Rng& rng) {
+               const AiProfile& prof, size_t max_targets, Rng& rng,
+               const CurveRequest* prev = nullptr) {
     const Vec2 self_pos = self.current().pos;
     // 带瞄准误差的目标相对坐标
     std::vector<Vec2> rels;
@@ -704,6 +793,9 @@ Plan plan_hard(const World& world, const Player& self, const std::vector<TargetR
         for (const auto* pl : usable) {
             if (pl->reach >= max_reach && pl->ally == min_ally) cands.push_back(pl);
         }
+        // 与上一发近似的同档线优先剔掉（见 drop_repeats_of_prev）：pick 有两处
+        // 调用（多杀线集/单杀线集），过滤放这里对两者一体生效
+        if (prev != nullptr) drop_repeats_of_prev(cands, *prev);
         // 每种可行骨架先平等翻牌（各 1/kinds 概率），再在类型里取最短档随机：
         // 跨类型的长度阈值会把"稍长一点的其它形状"整族排除，出手全挤在最短的
         // 一两种几何上（评测里困难/大神多项式占一半就是这么来的）；长度只做
@@ -892,7 +984,7 @@ AiDecision ai_decide(const World& world, int player_id, int difficulty, Rng& rng
     if (difficulty >= 2) {
         // 一发多穿的目标数上限：困难 4，大神不限（详见 plan_hard 的说明）
         const size_t max_targets = (difficulty >= 3) ? enemies.size() : 4;
-        plan_hard_result = plan_hard(world, *self, enemies, prof, max_targets, rng);
+        plan_hard_result = plan_hard(world, *self, enemies, prof, max_targets, rng, prev);
         if (plan_hard_result.valid && plan_hard_result.reach >= 1 && plan_hard_result.clear) {
             if (ai_trace_on() && ai_trace_take()) {
                 std::fprintf(stderr, "[trace] d=%d path=A kind=%d reach=%d ally=%d\n", difficulty,
@@ -942,7 +1034,9 @@ AiDecision ai_decide(const World& world, int player_id, int difficulty, Rng& rng
     // 拟人化"微调上一发"：一定概率把上一回合的表达式做数字级扰动后入池
     //（结构不变、参数微调——"就差一点，调调系数再来"）。评估照常，不行会被筛掉。
     // 大神必然扰动且多扰几轮：同样是择优输入，多份"差一点的上一次"变体让大神
-    // 更容易捡回自己失手的那条线（与困难的差距主要由它拉开）
+    // 更容易捡回自己失手的那条线（与困难的差距主要由它拉开）。
+    // 扰动量（±10%）落在 is_repeat_of 的 12% 判定内：这些变体与上一发同档时会被
+    // 出手多样性过滤剔掉，只在"那条线是唯一解"时才真的微调重发
     if (prev != nullptr && (difficulty >= 3 || rng.chance(0.6))) {
         const int rounds = (difficulty >= 3) ? prof.jitter_rounds : 1;
         for (int k = 0; k < rounds; ++k) {
@@ -1126,6 +1220,8 @@ AiDecision ai_decide(const World& world, int player_id, int difficulty, Rng& rng
                 // （跨类型的长度阈值会整族压掉"稍长"的形状，出手花样就没了）
                 if (c->aim_gap <= best_gap + 0.5) finals.push_back(c);
             }
+            // 与上一发近似的线优先剔掉（同档等效，换一条只有观感收益，见 drop_repeats_of_prev）
+            if (prev != nullptr) drop_repeats_of_prev(finals, *prev);
             if (ai_trace_on() && ai_trace_take()) {
                 std::fprintf(stderr, "[trace] d=%d path=B finals=%zu net=%d best_gap=%.2f\n",
                              difficulty, finals.size(), best_net, best_gap);
@@ -1144,6 +1240,13 @@ AiDecision ai_decide(const World& world, int player_id, int difficulty, Rng& rng
     // 最后兜底发射直线：可能中途被遮挡物挡住（炮弹会炸坑开路），但一定朝瞄准点方向
     out.request = make_parabola(horizontal, dx, dy, 0.0);
     return out;
+}
+
+// 两条请求是否"同一发"：视角/方向/模式不同的式子即使参数一致也是完全不同的弹道，
+// 先排除；再要求两段表达式都数字级近似（见 expr_repeats）
+bool is_repeat_of(const CurveRequest& c, const CurveRequest& prev) {
+    if (c.mode != prev.mode || c.dir != prev.dir || c.mirror != prev.mirror) return false;
+    return expr_repeats(c.expr_a, prev.expr_a) && expr_repeats(c.expr_b, prev.expr_b);
 }
 
 }  // namespace fg

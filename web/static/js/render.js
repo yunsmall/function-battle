@@ -388,7 +388,11 @@
                 hc.fill();
             }
             hc.globalCompositeOperation = 'source-over';
-            ctx.drawImage(holeLayer, 0, 0, lw, lh, bx, by, bw, bh);
+            // 目标尺寸取 lw/lh ÷ dpr（整物理像素，与离屏层 1:1）：非整数 dpr（1.25、2.625
+            // 等）下按 bw/bh 贴回会引入一次小于 1 物理像素的重采样——逐帧重采样在移动端
+            // 合成器上是闪烁的常见来源；1:1 贴回完全不走缩放路径（包围盒留过 2px 余量，
+            // 多出的透明边缘无视觉影响）
+            ctx.drawImage(holeLayer, 0, 0, lw, lh, bx, by, lw / dpr, lh / dpr);
         }
 
         // 形状轮廓：沿边缘分段画线，跳过两类段——① 被自己洞咬掉的；② 外侧被别的障碍
@@ -531,6 +535,36 @@
             }
         }
 
+        // 长表达式的折行（名字牌下的函数行）：优先在 + / - 号处断（下一行以符号
+        // 开头、像数学排版），行宽不超过 maxW 像素；表达式只含字符白名单里的
+        // ASCII（num_text 生成、服务器白名单校验），按单字节推进即可。
+        // 结果按文本缓存：折行是逐字符 measureText，而同一发表达式在它被替换前
+        // 每帧都要画一遍，逐帧重算纯属白做（手机端更明显）；条目上限防缓慢积攒
+        var wrapCache = {};
+        function wrapExpr(text, maxW) {
+            var key = maxW + '|' + text;
+            if (wrapCache[key]) return wrapCache[key];
+            var lines = [];
+            var cur = '';
+            var lastBreak = -1;  // 当前行内最近的 +/- 号下标（在符号前断）
+            for (var i = 0; i < text.length; i++) {
+                cur += text[i];
+                if (ctx.measureText(cur).width > maxW && cur.length > 1) {
+                    var cut = lastBreak > 0 ? lastBreak : cur.length - 1;
+                    lines.push(cur.slice(0, cut));
+                    cur = cur.slice(cut);
+                    lastBreak = -1;
+                }
+                if ((text[i] === '+' || text[i] === '-') && cur.length > 1) {
+                    lastBreak = cur.length - 1;
+                }
+            }
+            if (cur) lines.push(cur);
+            if (Object.keys(wrapCache).length > 200) wrapCache = {};  // 重算成本极低
+            wrapCache[key] = lines;
+            return lines;
+        }
+
         // draw_player 的移植：方块半边长与命中判定同源（cfg.player_half_size）；
         // 名字只画一次，挂在第一个存活士兵头上（全灭后挂在第一个士兵的残骸处）
         function drawPlayer(T, halfWorld, p, isMe, isCurrent, curSoldier,
@@ -585,23 +619,31 @@
                 }
             }
             if (anchor !== null) {
-                // 名字（带半透明底牌）+ 名字下方一行小字：本回合玩家这里是金色的
-                // "正在写"，其余玩家是灰色的"最近用过"（对齐 C++ render 的牌下文本）
+                // 名字（带半透明底牌）+ 名字下方的小字：本回合玩家这里是金色的
+                // "正在写"，其余玩家是灰色的"最近用过"（对齐 C++ render 的牌下文本）。
+                // 函数行按宽度折行完整显示——出手的表达式动辄几十个字符，截断会让
+                // 人读不出 AI 到底打了什么（对齐 C++ 的同款折行）
                 var ac = T.toScreen(anchor.pos[0], anchor.pos[1]);
                 var fs = 14, fnFs = 12;
                 ctx.font = fs + 'px ' + FONT;
                 var mw = ctx.measureText(p.name).width;
                 var hasFn = !!lastFn;
+                var fnLines = [];
                 var fnW = 0;
                 if (hasFn) {
                     ctx.font = fnFs + 'px ' + FONT;
-                    fnW = ctx.measureText(lastFn).width;
+                    fnLines = wrapExpr(lastFn, 160);
+                    for (var li = 0; li < fnLines.length; li++) {
+                        fnW = Math.max(fnW, ctx.measureText(fnLines[li]).width);
+                    }
                 }
+                var lineH = fnFs + 2;
+                var fnH = hasFn ? fnLines.length * lineH : 0;
                 var nx = ac.x - mw * 0.5;
-                var ny = ac.y - half - fs - 9 - (hasFn ? fnFs + 3 : 0);
+                var ny = ac.y - half - fs - 9 - (hasFn ? fnH + 1 : 0);
                 if (anchor.alive) {
-                    // 底牌按较宽的一行撑开（"正在写"常比名字长），两行文字各自居中
-                    var bh = fs + 5 + (hasFn ? fnFs + 4 : 0);
+                    // 底牌按较宽的一行撑开（"正在写"常比名字长），各行文字居中
+                    var bh = fs + 5 + (hasFn ? fnH + 2 : 0);
                     var bw = Math.max(mw, fnW) + 10;
                     ctx.fillStyle = css(COL.namePlate);
                     ctx.beginPath();
@@ -615,7 +657,10 @@
                 if (hasFn) {
                     ctx.font = fnFs + 'px ' + FONT;
                     ctx.fillStyle = css(fnGold ? COL.preview : COL.lastFunc);
-                    ctx.fillText(lastFn, ac.x - fnW * 0.5, ny + fs + 2);
+                    for (var k = 0; k < fnLines.length; k++) {
+                        var kw = ctx.measureText(fnLines[k]).width;
+                        ctx.fillText(fnLines[k], ac.x - kw * 0.5, ny + fs + 2 + k * lineH);
+                    }
                 }
             }
         }

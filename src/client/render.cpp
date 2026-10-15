@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstdio>
 #include <numbers>
+#include <vector>
 
+#include "text_wrap.h"
 #include "ui_style.h"
 
 namespace fg {
@@ -469,12 +471,13 @@ void draw_obstacles(const View& view, const std::vector<Obstacle>& obstacles,
     }
 }
 
-// 名字牌下方函数行的显示截断：按字节截取但回退到 UTF-8 字符边界（防孤立续字节乱码）
-std::string truncate_utf8(const std::string& s, size_t max_bytes) {
-    if (s.size() <= max_bytes) return s;
-    size_t cut = max_bytes;
-    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
-    return s.substr(0, cut) + "…";
+// 名字牌下函数行的折行：算法在 core 的 text_wrap.h（纯逻辑、可单测），
+// 这里只把字体测量接进去
+std::vector<std::string> wrap_expr(const Font& font, float fs, const std::string& text,
+                                   float max_w) {
+    return wrap_by_width(text, max_w, [&](const std::string& s) {
+        return MeasureTextEx(font, s.c_str(), fs, 1.0f).x;
+    });
 }
 
 void draw_player(const View& view, double half_size, const Player& p, bool is_me,
@@ -532,7 +535,9 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
     if (anchor != nullptr) {
         // 名字（带半透明底牌，避免压在网格上看不清）+ 名字下方一行小字：当前输入者的
         // "正在写"实时预览优先（金色——这张牌就是全场看他打字的地方），没有才回落到
-        // "最近用过的函数"（暗色）。底牌按名字/函数行里较宽的一行撑开，函数行不溢出
+        // "最近用过的函数"（暗色）。底牌按名字/函数行里较宽的一行撑开；函数行按
+        // 宽度折行完整显示——出手的表达式动辄几十字符，截断读不出打了什么（与
+        // 网页端的折行同一口径）
         const Vector2 c = view.to_screen(anchor->pos);
         const auto [font, fs] = pick_tier_font(fonts, 14.0f);
         const Vector2 m = MeasureTextEx(font, p.name.c_str(), fs, 1.0f);
@@ -540,26 +545,34 @@ void draw_player(const View& view, double half_size, const Player& p, bool is_me
         std::string line;
         Color line_c = kTextDim;
         if (writing != nullptr && !writing->empty()) {
-            line = "正在写：" + truncate_utf8(*writing, 48);
+            line = "正在写：" + *writing;
             line_c = kGold;
         } else if (last_func != nullptr && !last_func->empty()) {
             line = *last_func;
         }
-        const bool has_line = !line.empty();
-        const Vector2 lm = has_line ? MeasureTextEx(fn_font, line.c_str(), fn_fs, 1.0f)
-                                    : Vector2{0.0f, 0.0f};
-        const float box_w = std::max(m.x, lm.x) + 10.0f;
+        const std::vector<std::string> fn_lines =
+            line.empty() ? std::vector<std::string>{} : wrap_expr(fn_font, fn_fs, line, 160.0f);
+        float line_w = 0.0f;
+        for (const std::string& l : fn_lines) {
+            line_w = std::max(line_w, MeasureTextEx(fn_font, l.c_str(), fn_fs, 1.0f).x);
+        }
+        const bool has_line = !fn_lines.empty();
+        const float line_h = fn_fs + 2.0f;
+        const float fn_h = static_cast<float>(fn_lines.size()) * line_h;
+        const float box_w = std::max(m.x, line_w) + 10.0f;
         const Vector2 np{c.x - m.x * 0.5f,
-                         c.y - half - fs - 9.0f - (has_line ? fn_fs + 3.0f : 0.0f)};
+                         c.y - half - fs - 9.0f - (has_line ? fn_h + 1.0f : 0.0f)};
         if (anchor->alive) {
-            const float box_h = fs + 5.0f + (has_line ? fn_fs + 4.0f : 0.0f);
+            const float box_h = fs + 5.0f + (has_line ? fn_h + 2.0f : 0.0f);
             DrawRectangleRounded(Rectangle{c.x - box_w * 0.5f, np.y - 2.0f, box_w, box_h}, 0.5f,
                                  5, kPlateBg);
         }
         DrawTextEx(font, p.name.c_str(), np, fs, 1.0f, anchor->alive ? kNameAlive : kNameDead);
-        if (has_line) {
-            DrawTextEx(fn_font, line.c_str(), Vector2{c.x - lm.x * 0.5f, np.y + fs + 2.0f}, fn_fs,
-                       1.0f, line_c);
+        for (size_t k = 0; k < fn_lines.size(); ++k) {
+            const float w = MeasureTextEx(fn_font, fn_lines[k].c_str(), fn_fs, 1.0f).x;
+            DrawTextEx(fn_font, fn_lines[k].c_str(),
+                       Vector2{c.x - w * 0.5f, np.y + fs + 2.0f + static_cast<float>(k) * line_h},
+                       fn_fs, 1.0f, line_c);
         }
     }
 }

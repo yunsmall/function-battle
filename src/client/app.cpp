@@ -355,16 +355,9 @@ void App::handle_server_message(const json& m) {
         battle_.has_path = false;
         sfx_shot();
         if (req) {
-            // "最近用过的函数"（右侧面板每人一行小字）：只存表达式本身，超长截断。
-            // 截断回退到 UTF-8 字符边界：客户端连的服务器不保证是本家的，
-            // 切出孤立续字节会画成乱码
-            std::string f = req->expr_a;
-            if (f.size() > 16) {
-                size_t cut = 16;
-                while (cut > 0 && (static_cast<unsigned char>(f[cut]) & 0xC0) == 0x80) --cut;
-                f = f.substr(0, cut) + "…";
-            }
-            battle_.last_func[owner] = std::move(f);
+            // "最近用过的函数"（士兵名字牌下的小字）：存全文——显示端按宽度折行
+            // 完整画出（出手的表达式动辄几十字符，截断读不出打了什么）
+            battle_.last_func[owner] = req->expr_a;
         }
         if (req && found) {
             CurveResult res = sample_curve(*req, origin, battle_.cfg);

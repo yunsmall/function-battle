@@ -55,4 +55,8 @@ struct AiDecision {
 AiDecision ai_decide(const World& world, int player_id, int difficulty, Rng& rng,
                      const CurveRequest* prev = nullptr);
 
+// 两条请求是否"同一发"（出手多样性过滤的判定，见 ai.cpp 的 drop_repeats_of_prev）。
+// 暴露给测试直接验证判定边界，生产代码只在 ai.cpp 内部使用
+bool is_repeat_of(const CurveRequest& c, const CurveRequest& prev);
+
 }  // namespace fg

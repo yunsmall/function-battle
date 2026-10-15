@@ -601,3 +601,67 @@ TEST(Ai, GodAiPrefersCleanCurveOverBlastingObstacles) {
     }
     EXPECT_FALSE(dirty) << "seed=" << good_seed << "：存在干净曲线，大神 AI 却选了炸障碍的线";
 }
+
+TEST(Ai, StalledBoardDoesNotRepeatExactly) {
+    // 局面完全停滞（不提交、世界原封不动）时连续出手：AI 不应产出"一模一样的函数"——
+    // 上发命中后对方只掉血就是这种局面的现实版，连续复读玩家一眼看穿（见
+    // drop_repeats_of_prev 的出手多样性过滤）。每次把上一发当 prev 传回去，
+    // 统计相邻两发表达式完全相等的次数；开阔图同档候选充足，一次都不该出现
+    constexpr int kShots = 10;
+    int repeats = 0;
+    for (int t = 0; t < 8; ++t) {
+        fg::GameConfig cfg;
+        cfg.match.turn_delay = 0.0;
+        cfg.match.seed = static_cast<uint64_t>(6100 + t);
+        cfg.match.obstacle_count = 0;
+        cfg.match.first_team = 0;
+        cfg.room.soldiers_per_player = 1;  // 四个玩家各一兵：池里候选不会因缺目标而枯竭
+        fg::World w;
+        std::vector<fg::PlayerSpec> specs = {
+            {"A1", fg::Team::A, false, 0},
+            {"B1", fg::Team::B, false, 0},
+            {"B2", fg::Team::B, false, 0},
+            {"B3", fg::Team::B, false, 0},
+        };
+        w.start(cfg, specs);
+        w.take_events();
+
+        const int cur = w.current_player_id();
+        fg::Rng rng(static_cast<uint64_t>(7200 + t));
+        fg::CurveRequest prev;
+        bool has_prev = false;
+        for (int s = 0; s < kShots; ++s) {
+            const fg::AiDecision dec =
+                fg::ai_decide(w, cur, 3, rng, has_prev ? &prev : nullptr);
+            if (has_prev && dec.request.expr_a == prev.expr_a &&
+                dec.request.expr_b == prev.expr_b && dec.request.dir == prev.dir) {
+                ++repeats;
+            }
+            prev = dec.request;
+            has_prev = true;
+        }
+    }
+    EXPECT_EQ(repeats, 0) << "局面停滞时 AI 复读了同一发（" << repeats << " 次）";
+}
+
+TEST(Ai, RepeatFilterRespectsShapeAndSign) {
+    // "同一发"的判定只在结构一致时比数字：数字相同、结构或符号不同的式子
+    // （+0.5*x 与 -0.5*x、sin(2*x) 与 2*sin(x)）是完全不同的曲线，
+    // 不能被出手多样性过滤误剔
+    fg::CurveRequest a;
+    a.expr_a = "0.5000*x";
+    fg::CurveRequest b = a;
+    b.expr_a = "-0.5000*x";  // 符号相反：弹道镜像，不是复读
+    EXPECT_FALSE(fg::is_repeat_of(b, a));
+    b.expr_a = "0.5000*x*2.0000";  // 尾部多乘一项：结构不同
+    EXPECT_FALSE(fg::is_repeat_of(b, a));
+    fg::CurveRequest c = a;
+    c.expr_a = "0.5000*x+2.0000*sin(1.0000*x)";
+    fg::CurveRequest d = c;
+    EXPECT_TRUE(fg::is_repeat_of(d, c));  // 完全一致 → 同一发
+    d.expr_a = "0.5300*x+2.1000*sin(0.9700*x)";  // 参数都在 12% 内微调 → 仍算同一发
+    EXPECT_TRUE(fg::is_repeat_of(d, c));
+    fg::CurveRequest e = c;
+    e.expr_a = "0.5000*x+2.0000*sin(1.0000*x)*1.0000";  // 结构不同的近似式 → 不是同一发
+    EXPECT_FALSE(fg::is_repeat_of(e, c));
+}

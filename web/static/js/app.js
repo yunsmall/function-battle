@@ -533,18 +533,21 @@
         $('turn-banner').textContent = me === null ? t('spectating') : t('waiting_move');
         $('countdown').textContent = '';
         updateInputState();
+        // 事件面板跨局残留：上一局的战报会一直挂在列表里（rejoin 时只补一行"新对局
+        // 开始"分隔行，旧事件照旧显示，看起来像"这局显示了不是本局的事件"）——开局一律清空
+        $('event-log').innerHTML = '';
         if (rejoin) log('<span class="dim">' + esc(t('ev_new_game')) + '</span>');
         showScreen('battle');
     }
 
-    // shot 到来：先用 request 记录"最近用过的函数"（截断规则与 C++ 同），再用 trail
+    // shot 到来：先用 request 记录"最近用过的函数"（完整存下，渲染层折行显示——与 C++ 同），再用 trail
     // 重建本发炮弹的完整轨迹（C++ 客户端在这同一位置本地采样；网页端不共享 core，
     // 轨迹由服务器下发）。弹头初始位置藏在士兵方块里（跳过半个边长再显示）——纯视觉，与命中判定无关
     function addShot(m) {
         var b = S.battle;
         if (!b) return;
         if (m.request && typeof m.request.expr_a === 'string' && m.request.expr_a !== '') {
-            b.lastFunc[m.owner] = truncateUtf8(m.request.expr_a, 16);
+            b.lastFunc[m.owner] = m.request.expr_a;
         }
         b.shot = null;
         b.projectile = null;
@@ -1250,12 +1253,12 @@
         net.on('function_preview', function (m) {
             // 只认当前回合玩家的"正在写"（服务器已过滤，这里防消息在途换回合）；
             // 自己的不显示（表达式就在输入框里，C++ 同）。文本挂到该玩家名下，
-            // 由渲染层画在他的名字牌下方（截断规则与 C++ 的 truncate 一致）
+            // 由渲染层画在他的名字牌下方（完整显示，渲染层折行——与 C++ 同）
             if (m.member_id === S.myId) return;
             if (!S.battle || !S.battle.turn || m.member_id !== S.battle.turn.playerId) return;
             // 显示保留到回合结束（turn_begin 时清空，与 C++ 一致），不设超时：
             // 对手停手思考时清掉会让等待方误以为对手已提交
-            S.battle.previewText = t('typing_prefix') + truncateUtf8(m.preview, 48);
+            S.battle.previewText = t('typing_prefix') + m.preview;
         });
 
         net.on('curve_preview', function (m) {

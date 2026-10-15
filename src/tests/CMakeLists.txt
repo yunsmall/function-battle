@@ -6,6 +6,7 @@ add_executable(fb_tests
     test_curve.cpp
     test_world.cpp
     test_ai.cpp
+    test_wrap.cpp
     test_room.cpp
     test_protocol.cpp
     test_web.cpp
